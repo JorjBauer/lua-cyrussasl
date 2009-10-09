@@ -128,7 +128,7 @@ int _cyrussasl_sasl_server_init(lua_State *l)
   err = sasl_server_init(NULL, // callbacks
 			 "prosody"); // FIXME: replace app name with an argument
   if (err != SASL_OK) {
-    lua_pushstring(l, "sasl_server_new failed");
+    lua_pushstring(l, "sasl_server_init failed");
     lua_error(l);
     return 0;
   }
@@ -153,7 +153,7 @@ int _cyrussasl_sasl_server_new(lua_State *l)
   // FIXME: callbacks really belongs in init, not in server_new... but if it
   // works here, that's okay for now
 
-  err = sasl_server_new( "rcmd", // service
+  err = sasl_server_new( "xmpp", // service
 			 NULL,   // localdomain
 			 NULL,   // userdomain
 			 NULL,   // iplocal
