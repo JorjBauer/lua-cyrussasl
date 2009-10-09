@@ -5,118 +5,176 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define PLUGINDIR "/usr/lib/sasl2"
+#include "cyrussasl.h"
+#include "luaabstract.h"
 
-// FIXME: this obviously is stupid; it's not tied to a session. But it's here
-// to prove the point that this works...
-static char cur_username[256] = { 0 };
+struct _sasl_ctx *g_contexts = NULL;
 
-static int sasl_my_log(void *context __attribute__((unused)),
-		       int priority,
-		       const char *message)
+/* _find_context is a temporary hack to walk the linked list of contexts; they 
+ * should be removed, and treated as Lua userdata instead. */
+
+struct _sasl_ctx *_find_context(sasl_conn_t *conn)
 {
-  const char *label;
-  if (! message)
-    return SASL_BADPARAM;
-  switch (priority) {
-  case SASL_LOG_ERR:
-    label = "Error";
-    break;
-  case SASL_LOG_NOTE:
-    label = "Info";
-    break;
-  default:
-    label = "Other";
-    break;
+  _sasl_ctx *ptr = g_contexts;
+
+  while (1) {
+    if (!ptr)
+      return NULL;
+
+    if (ptr->magic != CYRUSSASL_MAGIC)
+      return NULL;
+
+    if (ptr->conn == conn)
+      return ptr;
+
+    ptr = ptr->next;
   }
 
-  fprintf(stderr, "error: SASL %s: %s\n", 
-	  label, message);
-  return SASL_OK;
+  /* NOTREACHED */
 }
 
-static int
-getpath( void *context,
-	 char ** path)
+struct _sasl_ctx *_new_context()
 {
-  if (! path)
+  struct _sasl_ctx *ret = NULL;
+
+  ret = malloc(sizeof(struct _sasl_ctx));
+  if (!ret)
+    return NULL;
+
+  ret->magic        = CYRUSSASL_MAGIC;
+  ret->conn         = NULL;
+  ret->last_message = NULL;
+  ret->user         = NULL;
+  ret->timestamp    = time(NULL);
+  ret->next         = NULL;
+
+  /* This is a temporary hack, placing it on g_contexts. The entire notion
+   * of keeping this in a linked list needs to be removed; this should be Lua
+   * table metadata.
+   */
+  ret->next = g_contexts;
+  g_contexts = ret;
+}
+
+void _free_context(struct _sasl_ctx *ctx)
+{
+  if (!ctx || ctx->magic != CYRUSSASL_MAGIC) 
+    return;
+
+  if (ctx->last_message)
+    free(ctx->last_message);
+  if (ctx->user)
+    free(ctx->user);
+
+  free(ctx);
+}
+
+void _set_context_conn(struct _sasl_ctx *ctx, sasl_conn_t *conn)
+{
+  if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
+    return;
+
+  ctx->conn = conn;
+  ctx->timestamp = time(NULL);
+}
+
+void _set_context_message(struct _sasl_ctx *ctx, const char *msg)
+{
+  if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
+    return;
+  if (!msg)
+    return;
+
+  if (ctx->last_message)
+    free(ctx->last_message);
+  ctx->last_message = malloc(strlen(msg)+1);
+  if (!ctx->last_message)
+    return;
+
+  strcpy(ctx->last_message, msg); // only as safe as the strlen() was...
+
+  ctx->timestamp = time(NULL);
+}
+
+void _set_context_user(struct _sasl_ctx *ctx, const char *usr)
+{
+  if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
+    return;
+  if (!usr)
+    return;
+
+  if (ctx->user)
+    free(ctx->user);
+  ctx->user = malloc(strlen(usr)+1);
+  if (!ctx->user)
+    return;
+
+  strcpy(ctx->user, usr); // only as safe as the strlen() was...
+
+  ctx->timestamp = time(NULL);
+}
+
+const char *_username(sasl_conn_t *conn)
+{
+  struct _sasl_ctx *p = _find_context(conn);
+  if (!p)
+    return NULL;
+
+  return p->user;
+}
+
+const char *_authname(sasl_conn_t *context)
+{
+  struct _sasl_ctx *p = _find_context(conn);
+  if (!p)
+    return NULL;
+
+  return p->authname;
+}
+
+const char *_message(sasl_conn_t *context)
+{
+  struct _sasl_ctx *p = _find_context(conn);
+  if (!p)
+    return NULL;
+
+  return p->last_message;
+}
+
+static int _sasl_log(void *context,
+		     int priority,
+		     const char *message)
+{
+  if (! message)
     return SASL_BADPARAM;
 
-  *path = PLUGINDIR;
+  _set_context_message(context, message);
+
   return SASL_OK;
 }
 
-int sasl_canon_user(sasl_conn_t *conn,
-		      void *context,
-		      const char *user, unsigned ulen,
-		      unsigned flags,
-		      const char *user_realm,
-		      char *out_user, unsigned out_umax,
-		      unsigned *out_ulen)
+int _sasl_canon_user(sasl_conn_t *conn,
+		     void *context,
+		     const char *user, unsigned ulen,
+		     unsigned flags,
+		     const char *user_realm,
+		     char *out_user, unsigned out_umax,
+		     unsigned *out_ulen)
 {
-  printf("CANON_USER: %s\n", user);
-
   if (strlen(user) >= out_umax) {
       return SASL_BUFOVER;
   }
 
-  strncpy(cur_username, user, sizeof(cur_username));
-
   strcpy(out_user, user);
   *out_ulen = strlen(user);
+
+  _set_context_user(context, out_user);
 
   return SASL_OK;
 }
 
-static sasl_callback_t callbacks[] = {
-  {
-    SASL_CB_LOG, &sasl_my_log, NULL
-  }, {
-    SASL_CB_GETPATH, &getpath, NULL
-  }, {
-    SASL_CB_CANON_USER, &sasl_canon_user, NULL
-  }, {
-    SASL_CB_LIST_END, NULL, NULL
-  }
-};
-
-void expected(lua_State *l, const char *exp, int index) {
-  char err[256];
-  snprintf(err, sizeof(err), "expected %s, got %s",
-	   exp, lua_typename(l, index));
-  lua_pushstring(l, err);
-  lua_error(l);
-}
-
-lua_Integer tointeger(lua_State *l, int index) {
-  if (lua_type(l, index) != LUA_TNUMBER)
-    expected(l, "integer", index);
-  return lua_tointeger(l, index);
-}
-
-const char *tolstring(lua_State *l, int index, size_t *len) {
-  if (lua_type(l, index) != LUA_TSTRING)
-    expected(l, "string", index);
-  return lua_tolstring(l, index, len);
-}
-
-const char *tostring(lua_State *l, int index) {
-  return tolstring(l, index, NULL);
-}
-
-void *tolightuserdata(lua_State *l, int index) {
-  if (lua_type(l, index) != LUA_TLIGHTUSERDATA)
-    expected(l, "lightuserdata", index);
-  return lua_touserdata(l, index);
-}
-
-void declfunc(lua_State *l, const char *name, lua_CFunction func) {
-  lua_pushcfunction(l, func);
-  lua_setfield(l, -2, name);
-}
-
 // jorj:server_init()
-int _cyrussasl_sasl_server_init(lua_State *l)
+static int _cyrussasl_sasl_server_init(lua_State *l)
 {
   int numargs = lua_gettop(l);
   int err;
@@ -130,7 +188,7 @@ int _cyrussasl_sasl_server_init(lua_State *l)
   err = sasl_server_init(NULL, // callbacks
 			 "prosody"); // FIXME: replace app name with an argument
   if (err != SASL_OK) {
-    lua_pushstring(l, "sasl_server_new failed");
+    lua_pushstring(l, "sasl_server_init failed");
     lua_error(l);
     return 0;
   }
@@ -140,11 +198,13 @@ int _cyrussasl_sasl_server_init(lua_State *l)
 
 
 // conn = jorj::server_new()
-int _cyrussasl_sasl_server_new(lua_State *l)
+static int _cyrussasl_sasl_server_new(lua_State *l)
 {
   int numargs = lua_gettop(l);
   int err;
   sasl_conn_t *conn = NULL;
+  sasl_callback_t callbacks[3];
+  struct _sasl_ctx *ctx = NULL;
 
   if (numargs != 0) {
     lua_pushstring(l, "usage: conn = jorj:server_new()");
@@ -152,8 +212,22 @@ int _cyrussasl_sasl_server_new(lua_State *l)
     return 0;
   }
 
-  // FIXME: callbacks really belongs in init, not in server_new... but if it
-  // works here, that's okay for now
+  ctx = _new_context();
+  if (!ctx) {
+    lua_pushstring(l, "Unable to allocate a new context");
+    lua_error(l);
+    return 0;
+  }
+
+  callbacks[0].id = SASL_CB_LOG;
+  callbacks[0].proc = &_sasl_log;
+  callbacks[0].context = ctx;
+  callbacks[1].id = SASL_CB_CANON_USER;
+  callbacks[1].proc = &_sasl_canon_user;
+  callbacks[1].context = ctx;
+  callbacks[2].id = SASL_CB_LIST_END;
+  callbacks[2].proc = NULL;
+  callbacks[2].context = NULL;
 
   err = sasl_server_new( "rcmd", // service
 			 NULL,   // localdomain
@@ -163,6 +237,9 @@ int _cyrussasl_sasl_server_new(lua_State *l)
 			 callbacks, // callbacks
 			 0,      // flags
 			 &conn ); // connection ptr
+
+  ctx->conn = conn;
+
   if ( err != SASL_OK ) {
     lua_pushstring(l, "sasl_server_new failed");
     lua_error(l);
@@ -177,15 +254,15 @@ int _cyrussasl_sasl_server_new(lua_State *l)
 }
 
 // (err, data, datalen) = jorj::server_start(conn, mech, data, datalen)
-int _cyrussasl_sasl_server_start(lua_State *l)
+static int _cyrussasl_sasl_server_start(lua_State *l)
 {
   int numargs = lua_gettop(l);
   int err;
   sasl_conn_t *conn = NULL;
   const char *mech = NULL;
   const char *data = NULL;
-  unsigned len;
-  int i;
+  size_t len;
+  unsigned outlen;
 
   if (numargs != 4) {
     lua_pushstring(l, "usage: conn = jorj:server_start(conn,mech,data,len)");
@@ -207,45 +284,30 @@ int _cyrussasl_sasl_server_start(lua_State *l)
   //  len = tointeger(l, 4);
   lua_pop(l, 4);
 
-  printf("calling sasl_server_start for mech %s, data %s, len %d\n", mech, data, len);
-  for (i=0; i<len; i++) {
-    printf("%.2x ", data[i]);
-  }
-  printf("\n");
-
   err = sasl_server_start( conn,
 			   mech,
 			   data,
 			   len,
 			   &data,
-			   &len );
-
-  /*
-    -- this is unnecessary; the error will be pushed up in the return code, so 
-    -- the caller will get the error condition without us having to throw one.
-  if ( err != SASL_OK && err != SASL_CONTINUE) {
-    lua_pushstring(l, "sasl_server_start failed");
-    lua_error(l);
-    return 0;
-  }
-  */
+			   &outlen );
 
   // push the result code, data and len
   lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
-  lua_pushlstring(l, data, len);
-  lua_pushinteger(l, len);
+  lua_pushlstring(l, data, outlen);
+  lua_pushinteger(l, outlen);
   printf("returning 3 args from server_start (err %d)\n", err);
   return 3;
 }
 
 // (err, data, datalen) = jorj::server_step(conn, data, datalen)
-int _cyrussasl_sasl_server_step(lua_State *l)
+static int _cyrussasl_sasl_server_step(lua_State *l)
 {
   int numargs = lua_gettop(l);
   int err;
   sasl_conn_t *conn = NULL;
   const char *data = NULL;
-  unsigned len;
+  size_t len;
+  unsigned outlen;
 
   if (numargs != 3) {
     lua_pushstring(l, "usage: conn = jorj:server_step(conn,data,len)");
@@ -263,7 +325,7 @@ int _cyrussasl_sasl_server_step(lua_State *l)
 			  data,
 			  len,
 			  &data,
-			  &len );
+			  &outlen );
   /*
     -- same as sasl_server_start: no need to explicitly catch the error here,
     -- as the caller can check the error code
@@ -276,14 +338,14 @@ int _cyrussasl_sasl_server_step(lua_State *l)
 
   // push the result code, data and len
   lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
-  lua_pushlstring(l, data, len);
-  lua_pushinteger(l, len);
+  lua_pushlstring(l, data, outlen);
+  lua_pushinteger(l, outlen);
 
   return 3;
 }
 
 // jorj::setprop(conn)
-int _cyrussasl_sasl_setprop(lua_State *l)
+static int _cyrussasl_sasl_setprop(lua_State *l)
 {
   sasl_security_properties_t secprops;
   int err;
@@ -313,13 +375,13 @@ int _cyrussasl_sasl_setprop(lua_State *l)
 }
 
 // b64data=jorj::encode64(data, len)
-int _cyrussasl_sasl_encode64(lua_State *l)
+static int _cyrussasl_sasl_encode64(lua_State *l)
 {
   unsigned len_out;
   int alloclen;
   char *buf = NULL;
   const char *data = NULL;
-  unsigned len;
+  size_t len;
   int err;
 
   int numargs = lua_gettop(l);
@@ -359,12 +421,13 @@ int _cyrussasl_sasl_encode64(lua_State *l)
 }
 
 // data, len = jorj::decode64(b64data)
-int _cyrussasl_sasl_decode64(lua_State *l)
+static int _cyrussasl_sasl_decode64(lua_State *l)
 {
   const char *data = NULL;
-  unsigned len;
+  char *outdata = NULL;
+  size_t len;
+  unsigned outlen;
   int err;
-  void *ret;
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
@@ -377,21 +440,31 @@ int _cyrussasl_sasl_decode64(lua_State *l)
   lua_pop(l, 1);
   len = strlen(data);
 
+  outdata = malloc(len);
+  if (!outdata) {
+    lua_pushstring(l, "failed to malloc in decode64");
+    lua_error(l);
+    return 0;
+  }
+
   // perform a decode-in-place. According to docs, this is kosher.
-  err = sasl_decode64(data, len, data, len, &len);
+  err = sasl_decode64(data, len, outdata, len, &outlen);
   if ( err != SASL_OK ) {
+    free(outdata);
     lua_pushstring(l, "sasl_decode64 failed");
     lua_error(l);
     return 0;
   }
 
-  lua_pushlstring(l, data, len);
-  lua_pushinteger(l, len);
+  lua_pushlstring(l, outdata, outlen);
+  lua_pushinteger(l, outlen);
+  free(outdata);
+
   return 2;
 }
 
 // mechsdata, len = jorj::listmech(conn)
-int _cyrussasl_sasl_listmech(lua_State *l)
+static int _cyrussasl_sasl_listmech(lua_State *l)
 {
   int err;
   sasl_conn_t *conn = NULL;
@@ -430,10 +503,72 @@ int _cyrussasl_sasl_listmech(lua_State *l)
   return 2;
 }
 
-// FIXME: need to pass 'conn' into this in order to get the right one
-int _cyrussasl_get_username(lua_State *l)
+// cyrussasl::get_username(conn)
+// may return an empty string if the negotiation hasn't yet finished
+static int _cyrussasl_get_username(lua_State *l)
 {
-  lua_pushstring(l, cur_username);
+  sasl_conn_t *conn;
+
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    lua_pushstring(l, "usage: cyrussasl:get_username(conn)");
+    lua_error(l);
+    return 0;
+  }
+
+  conn = (sasl_conn_t *)tolightuserdata(l, -1);
+  lua_pop(l, 1);
+
+  if (_username(conn))
+    lua_pushstring(l, _username(conn));
+  else
+    lua_pushstring(l, "");
+
+  return 1;
+}
+
+// cyrussasl::get_authname(conn)
+// may return an empty string if the negotiation hasn't yet finished
+static int _cyrussasl_get_authname(lua_State *l)
+{
+  sasl_conn_t *conn;
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    lua_pushstring(l, "usage: cyrussasl:get_authname(conn)");
+    lua_error(l);
+    return 0;
+  }
+
+  conn = (sasl_conn_t *)tolightuserdata(l, -1);
+  lua_pop(l, 1);
+
+  if (_authname(conn))
+    lua_pushstring(l, _authname(conn));
+  else
+    lua_pushstring(l, "");
+
+  return 1;
+}
+
+// cyrussasl::get_message(conn)
+// may return an empty string if the negotiation hasn't logged anything
+static int _cyrussasl_get_message(lua_State *l)
+{
+  sasl_conn_t *conn;
+  int numargs = lua_gettop(l);
+  if (numargs != 1) {
+    lua_pushstring(l, "usage: cyrussasl:get_message(conn)");
+    lua_error(l);
+    return 0;
+  }
+
+  conn = (sasl_conn_t *)tolightuserdata(l, -1);
+  lua_pop(l, 1);
+
+  if (_message(conn))
+    lua_pushstring(l, _message(conn));
+  else
+    lua_pushstring(l, "");
 
   return 1;
 }
@@ -457,6 +592,8 @@ int luaopen_cyrussasl(lua_State *l)
   declfunc(l, "server_start", _cyrussasl_sasl_server_start);
   declfunc(l, "server_step", _cyrussasl_sasl_server_step);
   declfunc(l, "get_username", _cyrussasl_get_username);
+  declfunc(l, "get_authname", _cyrussasl_get_authname);
+  declfunc(l, "get_message", _cyrussasl_get_message);
 
   lua_setglobal(l, "cyrussasl");
 
@@ -471,6 +608,10 @@ int luaopen_cyrussasl(lua_State *l)
   declfunc(l, "server_start", _cyrussasl_sasl_server_start);
   declfunc(l, "server_step", _cyrussasl_sasl_server_step);
   declfunc(l, "get_username", _cyrussasl_get_username);
+  declfunc(l, "get_authname", _cyrussasl_get_authname);
+  declfunc(l, "get_message", _cyrussasl_get_message);
+
+  //SASL_CB_AUTHNAME
 
   return 1;
 }
