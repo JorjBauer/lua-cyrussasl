@@ -15,7 +15,7 @@ struct _sasl_ctx *g_contexts = NULL;
 
 struct _sasl_ctx *_find_context(sasl_conn_t *conn)
 {
-  _sasl_ctx *ptr = g_contexts;
+  struct _sasl_ctx *ptr = g_contexts;
 
   while (1) {
     if (!ptr)
@@ -54,6 +54,8 @@ struct _sasl_ctx *_new_context()
    */
   ret->next = g_contexts;
   g_contexts = ret;
+
+  return ret;
 }
 
 void _free_context(struct _sasl_ctx *ctx)
@@ -123,7 +125,7 @@ const char *_username(sasl_conn_t *conn)
   return p->user;
 }
 
-const char *_authname(sasl_conn_t *context)
+const char *_authname(sasl_conn_t *conn)
 {
   struct _sasl_ctx *p = _find_context(conn);
   if (!p)
@@ -132,7 +134,7 @@ const char *_authname(sasl_conn_t *context)
   return p->authname;
 }
 
-const char *_message(sasl_conn_t *context)
+const char *_message(sasl_conn_t *conn)
 {
   struct _sasl_ctx *p = _find_context(conn);
   if (!p)
@@ -229,7 +231,7 @@ static int _cyrussasl_sasl_server_new(lua_State *l)
   callbacks[2].proc = NULL;
   callbacks[2].context = NULL;
 
-  err = sasl_server_new( "rcmd", // service
+  err = sasl_server_new( "xmpp", // service
 			 NULL,   // localdomain
 			 NULL,   // userdomain
 			 NULL,   // iplocal
@@ -295,7 +297,6 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
   lua_pushlstring(l, data, outlen);
   lua_pushinteger(l, outlen);
-  printf("returning 3 args from server_start (err %d)\n", err);
   return 3;
 }
 
