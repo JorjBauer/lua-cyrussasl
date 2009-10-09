@@ -147,7 +147,6 @@ static int _sasl_log(void *context,
 		     int priority,
 		     const char *message)
 {
-  printf("_sasl_log called\n");
   if (! message)
     return SASL_BADPARAM;
 
@@ -164,8 +163,6 @@ int _sasl_canon_user(sasl_conn_t *conn,
 		     char *out_user, unsigned out_umax,
 		     unsigned *out_ulen)
 {
-  printf("_sasl_canon_user called\n");
-
   if (strlen(user) >= out_umax) {
       return SASL_BUFOVER;
   }
@@ -277,8 +274,6 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   size_t len;
   unsigned outlen;
 
-  printf("_sasl_server_start called\n");
-
   if (numargs != 4) {
     lua_pushstring(l, "usage: conn = cyrussasl:server_start(conn,mech,data,len)");
     lua_error(l);
@@ -299,13 +294,8 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   //  len = tointeger(l, 4);
   lua_pop(l, 4);
 
-  outlen = len;
-  printf("calling sasl_server_start\n");
-  printf("conn is 0x%X\n", conn);
-  printf("mech is %s\n", mech);
-  printf("data is %s\n", data);
-  printf("len is %d\n", len);
-  printf("outlen is %d\n", outlen);
+  //  outlen = len;
+
   err = sasl_server_start( conn,
 			   mech,
 			   data,
@@ -313,12 +303,10 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
 			   &data,
 			   &outlen );
 
-  printf("pushing results\n");
   // push the result code, data and len
   lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
   lua_pushlstring(l, data, outlen);
   lua_pushinteger(l, outlen);
-  printf("returning\n");
   return 3;
 }
 
