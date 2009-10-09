@@ -54,8 +54,6 @@ int sasl_canon_user(sasl_conn_t *conn,
 		      char *out_user, unsigned out_umax,
 		      unsigned *out_ulen)
 {
-  printf("CANON_USER: %s\n", user);
-
   if (strlen(user) >= out_umax) {
       return SASL_BUFOVER;
   }
@@ -207,12 +205,6 @@ int _cyrussasl_sasl_server_start(lua_State *l)
   //  len = tointeger(l, 4);
   lua_pop(l, 4);
 
-  printf("calling sasl_server_start for mech %s, data %s, len %d\n", mech, data, len);
-  for (i=0; i<len; i++) {
-    printf("%.2x ", data[i]);
-  }
-  printf("\n");
-
   err = sasl_server_start( conn,
 			   mech,
 			   data,
@@ -234,7 +226,6 @@ int _cyrussasl_sasl_server_start(lua_State *l)
   lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
   lua_pushlstring(l, data, len);
   lua_pushinteger(l, len);
-  printf("returning 3 args from server_start (err %d)\n", err);
   return 3;
 }
 

@@ -19,7 +19,7 @@ install: $(TARGET)
 	cp $(TARGET) $(CPATH)
 
 clean:
-	rm -f *.o *.so
+	rm -f *.o *.so *~
 
 $(TARGET): $(OBJS)
 	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS)
