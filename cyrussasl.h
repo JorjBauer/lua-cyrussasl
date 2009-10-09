@@ -9,6 +9,7 @@
 struct _sasl_ctx {
   unsigned long magic;
   sasl_conn_t *conn;
+  sasl_callback_t callbacks[3];
   char *last_message;
   char *user;
   char *authname;

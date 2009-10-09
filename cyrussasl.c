@@ -147,6 +147,7 @@ static int _sasl_log(void *context,
 		     int priority,
 		     const char *message)
 {
+  printf("_sasl_log called\n");
   if (! message)
     return SASL_BADPARAM;
 
@@ -163,6 +164,8 @@ int _sasl_canon_user(sasl_conn_t *conn,
 		     char *out_user, unsigned out_umax,
 		     unsigned *out_ulen)
 {
+  printf("_sasl_canon_user called\n");
+
   if (strlen(user) >= out_umax) {
       return SASL_BUFOVER;
   }
@@ -175,20 +178,25 @@ int _sasl_canon_user(sasl_conn_t *conn,
   return SASL_OK;
 }
 
-// cyrussasl:server_init()
+// cyrussasl:server_init("appname")
 static int _cyrussasl_sasl_server_init(lua_State *l)
 {
+  const char *appname;
   int numargs = lua_gettop(l);
   int err;
 
-  if (numargs != 0) {
-    lua_pushstring(l, "usage: cyrussasl:server_init()");
+  if (numargs != 1) {
+    lua_pushstring(l, "usage: cyrussasl:server_init(appname)");
     lua_error(l);
     return 0;
   }
 
-  err = sasl_server_init(NULL, // callbacks
-			 "prosody"); // FIXME: replace app name with an argument
+  appname = tostring(l, 1);
+  lua_pop(l, 1);
+
+  err = sasl_server_init( NULL, // callbacks
+			  appname ); 
+
   if (err != SASL_OK) {
     lua_pushstring(l, "sasl_server_init failed");
     lua_error(l);
@@ -202,17 +210,20 @@ static int _cyrussasl_sasl_server_init(lua_State *l)
 // conn = cyrussasl:server_new()
 static int _cyrussasl_sasl_server_new(lua_State *l)
 {
+  const char *service_name;
   int numargs = lua_gettop(l);
   int err;
   sasl_conn_t *conn = NULL;
-  sasl_callback_t callbacks[3];
   struct _sasl_ctx *ctx = NULL;
 
-  if (numargs != 0) {
-    lua_pushstring(l, "usage: conn = cyrussasl:server_new()");
+  if (numargs != 1) {
+    lua_pushstring(l, "usage: cyrussasl:server_new(service_name)");
     lua_error(l);
     return 0;
   }
+
+  service_name = tostring(l, 1);
+  lua_pop(l, 1);
 
   ctx = _new_context();
   if (!ctx) {
@@ -221,24 +232,24 @@ static int _cyrussasl_sasl_server_new(lua_State *l)
     return 0;
   }
 
-  callbacks[0].id = SASL_CB_LOG;
-  callbacks[0].proc = &_sasl_log;
-  callbacks[0].context = ctx;
-  callbacks[1].id = SASL_CB_CANON_USER;
-  callbacks[1].proc = &_sasl_canon_user;
-  callbacks[1].context = ctx;
-  callbacks[2].id = SASL_CB_LIST_END;
-  callbacks[2].proc = NULL;
-  callbacks[2].context = NULL;
+  ctx->callbacks[0].id = SASL_CB_LOG;
+  ctx->callbacks[0].proc = &_sasl_log;
+  ctx->callbacks[0].context = ctx;
+  ctx->callbacks[1].id = SASL_CB_CANON_USER;
+  ctx->callbacks[1].proc = &_sasl_canon_user;
+  ctx->callbacks[1].context = ctx;
+  ctx->callbacks[2].id = SASL_CB_LIST_END;
+  ctx->callbacks[2].proc = NULL;
+  ctx->callbacks[2].context = NULL;
 
-  err = sasl_server_new( "xmpp", // service
+  err = sasl_server_new( service_name, // service
 			 NULL,   // localdomain
 			 NULL,   // userdomain
 			 NULL,   // iplocal
 			 NULL,   // ipremote
-			 callbacks, // callbacks
+			 ctx->callbacks, // callbacks
 			 0,      // flags
-			 &conn ); // connection ptr
+			 &conn ); // connection ptr (returned on success)
 
   ctx->conn = conn;
 
@@ -266,6 +277,8 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   size_t len;
   unsigned outlen;
 
+  printf("_sasl_server_start called\n");
+
   if (numargs != 4) {
     lua_pushstring(l, "usage: conn = cyrussasl:server_start(conn,mech,data,len)");
     lua_error(l);
@@ -286,6 +299,13 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   //  len = tointeger(l, 4);
   lua_pop(l, 4);
 
+  outlen = len;
+  printf("calling sasl_server_start\n");
+  printf("conn is 0x%X\n", conn);
+  printf("mech is %s\n", mech);
+  printf("data is %s\n", data);
+  printf("len is %d\n", len);
+  printf("outlen is %d\n", outlen);
   err = sasl_server_start( conn,
 			   mech,
 			   data,
@@ -293,10 +313,12 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
 			   &data,
 			   &outlen );
 
+  printf("pushing results\n");
   // push the result code, data and len
   lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
   lua_pushlstring(l, data, outlen);
   lua_pushinteger(l, outlen);
+  printf("returning\n");
   return 3;
 }
 
