@@ -175,14 +175,14 @@ int _sasl_canon_user(sasl_conn_t *conn,
   return SASL_OK;
 }
 
-// jorj:server_init()
+// cyrussasl:server_init()
 static int _cyrussasl_sasl_server_init(lua_State *l)
 {
   int numargs = lua_gettop(l);
   int err;
 
   if (numargs != 0) {
-    lua_pushstring(l, "usage: jorj:server_init()");
+    lua_pushstring(l, "usage: cyrussasl:server_init()");
     lua_error(l);
     return 0;
   }
@@ -199,7 +199,7 @@ static int _cyrussasl_sasl_server_init(lua_State *l)
 }
 
 
-// conn = jorj::server_new()
+// conn = cyrussasl:server_new()
 static int _cyrussasl_sasl_server_new(lua_State *l)
 {
   int numargs = lua_gettop(l);
@@ -209,7 +209,7 @@ static int _cyrussasl_sasl_server_new(lua_State *l)
   struct _sasl_ctx *ctx = NULL;
 
   if (numargs != 0) {
-    lua_pushstring(l, "usage: conn = jorj:server_new()");
+    lua_pushstring(l, "usage: conn = cyrussasl:server_new()");
     lua_error(l);
     return 0;
   }
@@ -255,7 +255,7 @@ static int _cyrussasl_sasl_server_new(lua_State *l)
   return 1;
 }
 
-// (err, data, datalen) = jorj::server_start(conn, mech, data, datalen)
+// (err, data, datalen) = cyrussasl:server_start(conn, mech, data, datalen)
 static int _cyrussasl_sasl_server_start(lua_State *l)
 {
   int numargs = lua_gettop(l);
@@ -267,7 +267,7 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   unsigned outlen;
 
   if (numargs != 4) {
-    lua_pushstring(l, "usage: conn = jorj:server_start(conn,mech,data,len)");
+    lua_pushstring(l, "usage: conn = cyrussasl:server_start(conn,mech,data,len)");
     lua_error(l);
     return 0;
   }
@@ -300,7 +300,7 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   return 3;
 }
 
-// (err, data, datalen) = jorj::server_step(conn, data, datalen)
+// (err, data, datalen) = cyrussasl:server_step(conn, data, datalen)
 static int _cyrussasl_sasl_server_step(lua_State *l)
 {
   int numargs = lua_gettop(l);
@@ -311,7 +311,7 @@ static int _cyrussasl_sasl_server_step(lua_State *l)
   unsigned outlen;
 
   if (numargs != 3) {
-    lua_pushstring(l, "usage: conn = jorj:server_step(conn,data,len)");
+    lua_pushstring(l, "usage: conn = cyrussasl:server_step(conn,data,len)");
     lua_error(l);
     return 0;
   }
@@ -345,7 +345,7 @@ static int _cyrussasl_sasl_server_step(lua_State *l)
   return 3;
 }
 
-// jorj::setprop(conn)
+// cyrussasl:setprop(conn)
 static int _cyrussasl_sasl_setprop(lua_State *l)
 {
   sasl_security_properties_t secprops;
@@ -354,7 +354,7 @@ static int _cyrussasl_sasl_setprop(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: jorj:setprop(conn)");
+    lua_pushstring(l, "usage: cyrussasl:setprop(conn)");
     lua_error(l);
     return 0;
   }
@@ -375,7 +375,7 @@ static int _cyrussasl_sasl_setprop(lua_State *l)
   return 0;
 }
 
-// b64data=jorj::encode64(data, len)
+// b64data=cyrussasl:encode64(data, len)
 static int _cyrussasl_sasl_encode64(lua_State *l)
 {
   unsigned len_out;
@@ -387,7 +387,7 @@ static int _cyrussasl_sasl_encode64(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 2) {
-    lua_pushstring(l, "usage: jorj:encode64(data, len)");
+    lua_pushstring(l, "usage: cyrussasl:encode64(data, len)");
     lua_error(l);
     return 0;
   }
@@ -421,7 +421,7 @@ static int _cyrussasl_sasl_encode64(lua_State *l)
   return 1;
 }
 
-// data, len = jorj::decode64(b64data)
+// data, len = cyrussasl:decode64(b64data)
 static int _cyrussasl_sasl_decode64(lua_State *l)
 {
   const char *data = NULL;
@@ -432,7 +432,7 @@ static int _cyrussasl_sasl_decode64(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: jorj:decode64(b64data)");
+    lua_pushstring(l, "usage: cyrussasl:decode64(b64data)");
     lua_error(l);
     return 0;
   }
@@ -464,7 +464,7 @@ static int _cyrussasl_sasl_decode64(lua_State *l)
   return 2;
 }
 
-// mechsdata, len = jorj::listmech(conn)
+// mechsdata, len = cyrussasl:listmech(conn)
 static int _cyrussasl_sasl_listmech(lua_State *l)
 {
   int err;
@@ -476,7 +476,7 @@ static int _cyrussasl_sasl_listmech(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: jorj:listmech(conn)");
+    lua_pushstring(l, "usage: cyrussasl:listmech(conn)");
     lua_error(l);
     return 0;
   }
@@ -504,7 +504,7 @@ static int _cyrussasl_sasl_listmech(lua_State *l)
   return 2;
 }
 
-// cyrussasl::get_username(conn)
+// cyrussasl:get_username(conn)
 // may return an empty string if the negotiation hasn't yet finished
 static int _cyrussasl_get_username(lua_State *l)
 {
@@ -528,7 +528,7 @@ static int _cyrussasl_get_username(lua_State *l)
   return 1;
 }
 
-// cyrussasl::get_authname(conn)
+// cyrussasl:get_authname(conn)
 // may return an empty string if the negotiation hasn't yet finished
 static int _cyrussasl_get_authname(lua_State *l)
 {
@@ -551,7 +551,7 @@ static int _cyrussasl_get_authname(lua_State *l)
   return 1;
 }
 
-// cyrussasl::get_message(conn)
+// cyrussasl:get_message(conn)
 // may return an empty string if the negotiation hasn't logged anything
 static int _cyrussasl_get_message(lua_State *l)
 {
