@@ -159,17 +159,25 @@ static int _sasl_log(void *context,
   return SASL_OK;
 }
 
-int _sasl_canon_user(sasl_conn_t *conn,
-		     void *context,
-		     const char *user, unsigned ulen,
-		     unsigned flags,
-		     const char *user_realm,
-		     char *out_user, unsigned out_umax,
-		     unsigned *out_ulen)
+static int _sasl_canon_user(sasl_conn_t *conn,
+			    void *context,
+			    const char *user, unsigned ulen,
+			    unsigned flags,
+			    const char *user_realm,
+			    char *out_user, unsigned out_umax,
+			    unsigned *out_ulen)
 {
-  if (strlen(user) >= out_umax) {
+  if (!conn || !context || !user)
+    return SASL_BADPARAM;
+
+  if (!(flags & SASL_CU_AUTHID) && !(flags & SASL_CU_AUTHZID))
+    return SASL_BADPARAM;
+
+  if (((struct _sasl_ctx *)context)->magic != CYRUSSASL_MAGIC)
+    return SASL_BADPARAM;
+
+  if (strlen(user) >= out_umax)
       return SASL_BUFOVER;
-  }
 
   strcpy(out_user, user);
   *out_ulen = strlen(user);
@@ -214,12 +222,15 @@ static int cyrussasl_sasl_server_init(lua_State *l)
   return 0;
 }
 
-/* conn = cyrussasl.server_new("serice_name")
+/* conn = cyrussasl.server_new("serice_name", "host FQDN", "user realm")
  *
  * conn: an opaque data structure (from Lua's perspective) related to this 
  *       specific authentication attempt.
  * service_name: the name of the service that's being protected by SASL (e.g.
  *               xmpp, smtp, ...)
+ * host FQDN: the fully-qualified domain name of the server that users 
+ *            are connecting to
+ * user realm: the authentication user realm to use for AuthN purposes
  *
  * On error, this throws Lua error exceptions. (It is not the typical
  * case that this method might cause an error, except when attempting
@@ -227,20 +238,24 @@ static int cyrussasl_sasl_server_init(lua_State *l)
  */
 static int cyrussasl_sasl_server_new(lua_State *l)
 {
-  const char *service_name;
+  const char *service_name, *fqdn, *realm;
   int numargs = lua_gettop(l);
   int err;
   sasl_conn_t *conn = NULL;
   struct _sasl_ctx *ctx = NULL;
 
-  if (numargs != 1) {
-    lua_pushstring(l, "usage: conn = cyrussasl.server_new(service_name)");
+  if (numargs != 3) {
+    lua_pushstring(l, 
+		   "usage: "
+		   "conn = cyrussasl.server_new(service_name, fqdn, realm)");
     lua_error(l);
     return 0;
   }
 
   service_name = tostring(l, 1);
-  lua_pop(l, 1);
+  fqdn = tostring(l, 2);
+  realm = tostring(l, 3);
+  lua_pop(l, 3);
 
   ctx = _new_context();
   if (!ctx) {
@@ -260,10 +275,10 @@ static int cyrussasl_sasl_server_new(lua_State *l)
   ctx->callbacks[2].context = NULL;
 
   err = sasl_server_new( service_name,   /* service name (passed in) */
-			 NULL,           /* localdomain              */
-			 NULL,           /* userdomain               */
-			 NULL,           /* iplocal                  */
-			 NULL,           /* ipremote                 */
+			 fqdn,           /* serverFQDN               */
+			 realm,          /* user_realm               */
+			 NULL,           /* iplocalport              */
+			 NULL,           /* ipremoteport             */
 			 ctx->callbacks, /* per-connection callbacks */
 			 0,              /* flags                    */
 			 &conn );        /* returned connection ptr  */
