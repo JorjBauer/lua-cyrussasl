@@ -8,6 +8,10 @@
 #include "cyrussasl.h"
 #include "luaabstract.h"
 
+/* g_contexts is a hack, and should be replaced by using Lua userdata to 
+ * track the contexts instead (and attaching them to the appropriate 
+ * Lua objects). */
+
 struct _sasl_ctx *g_contexts = NULL;
 
 /* _find_context is a temporary hack to walk the linked list of contexts; they 
@@ -175,15 +179,22 @@ int _sasl_canon_user(sasl_conn_t *conn,
   return SASL_OK;
 }
 
-// cyrussasl:server_init("appname")
-static int _cyrussasl_sasl_server_init(lua_State *l)
+/* 
+ * cyrussasl.server_init("appname")
+ *
+ * appname: the name of this application, from SASL's perspective.
+ * 
+ * This function does not return any values. On failure, it will throw an 
+ * error.
+ */
+static int cyrussasl_sasl_server_init(lua_State *l)
 {
   const char *appname;
   int numargs = lua_gettop(l);
   int err;
 
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:server_init(appname)");
+    lua_pushstring(l, "usage: cyrussasl.server_init(appname)");
     lua_error(l);
     return 0;
   }
@@ -191,7 +202,7 @@ static int _cyrussasl_sasl_server_init(lua_State *l)
   appname = tostring(l, 1);
   lua_pop(l, 1);
 
-  err = sasl_server_init( NULL, // callbacks
+  err = sasl_server_init( NULL, /* Global callbacks */
 			  appname ); 
 
   if (err != SASL_OK) {
@@ -203,9 +214,18 @@ static int _cyrussasl_sasl_server_init(lua_State *l)
   return 0;
 }
 
-
-// conn = cyrussasl:server_new()
-static int _cyrussasl_sasl_server_new(lua_State *l)
+/* conn = cyrussasl.server_new("serice_name")
+ *
+ * conn: an opaque data structure (from Lua's perspective) related to this 
+ *       specific authentication attempt.
+ * service_name: the name of the service that's being protected by SASL (e.g.
+ *               xmpp, smtp, ...)
+ *
+ * On error, this throws Lua error exceptions. (It is not the typical
+ * case that this method might cause an error, except when attempting
+ * to set up SASL initially during development.)
+ */
+static int cyrussasl_sasl_server_new(lua_State *l)
 {
   const char *service_name;
   int numargs = lua_gettop(l);
@@ -214,7 +234,7 @@ static int _cyrussasl_sasl_server_new(lua_State *l)
   struct _sasl_ctx *ctx = NULL;
 
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:server_new(service_name)");
+    lua_pushstring(l, "usage: conn = cyrussasl.server_new(service_name)");
     lua_error(l);
     return 0;
   }
@@ -229,24 +249,24 @@ static int _cyrussasl_sasl_server_new(lua_State *l)
     return 0;
   }
 
-  ctx->callbacks[0].id = SASL_CB_LOG;
-  ctx->callbacks[0].proc = &_sasl_log;
+  ctx->callbacks[0].id      = SASL_CB_LOG;         /* Callback for error msg */
+  ctx->callbacks[0].proc    = &_sasl_log;
   ctx->callbacks[0].context = ctx;
-  ctx->callbacks[1].id = SASL_CB_CANON_USER;
-  ctx->callbacks[1].proc = &_sasl_canon_user;
+  ctx->callbacks[1].id      = SASL_CB_CANON_USER;  /* Callback for username */
+  ctx->callbacks[1].proc    = &_sasl_canon_user;
   ctx->callbacks[1].context = ctx;
-  ctx->callbacks[2].id = SASL_CB_LIST_END;
-  ctx->callbacks[2].proc = NULL;
+  ctx->callbacks[2].id      = SASL_CB_LIST_END;    /* Terminator */
+  ctx->callbacks[2].proc    = NULL;
   ctx->callbacks[2].context = NULL;
 
-  err = sasl_server_new( service_name, // service
-			 NULL,   // localdomain
-			 NULL,   // userdomain
-			 NULL,   // iplocal
-			 NULL,   // ipremote
-			 ctx->callbacks, // callbacks
-			 0,      // flags
-			 &conn ); // connection ptr (returned on success)
+  err = sasl_server_new( service_name,   /* service name (passed in) */
+			 NULL,           /* localdomain              */
+			 NULL,           /* userdomain               */
+			 NULL,           /* iplocal                  */
+			 NULL,           /* ipremote                 */
+			 ctx->callbacks, /* per-connection callbacks */
+			 0,              /* flags                    */
+			 &conn );        /* returned connection ptr  */
 
   ctx->conn = conn;
 
@@ -256,15 +276,28 @@ static int _cyrussasl_sasl_server_new(lua_State *l)
     return 0;
   }
 
-  // push the pointer on the lua stack as a return result
+  /* Return 1 item on the stack (a lightuserdata pointer to the connection) */
   lua_pushlightuserdata(l, conn);
-
-  // this '1' indicates we're returning one item on the stack
-  return 1;
+  return 1; /* return # of arguments returned on stack */
 }
 
-// (err, data, datalen) = cyrussasl:server_start(conn, mech, data, datalen)
-static int _cyrussasl_sasl_server_start(lua_State *l)
+/* (err, data) = cyrussasl.server_start(conn, mech, data)
+ *
+ * Arguments:
+ *   conn: the return result from a previous call to server_new
+ *   mech: the mechanism to use during this attempt (e.g. "PLAIN" or "GSSAPI")
+ *   data: any data that the client might have sent with its 
+ *         mech choice. Data may be an empty string or nil. Note that 
+ *         the non-nil case is specifically a Lua string object
+ *         (which, by definition, is allowed to contain '\0' bytes).
+ * Return values:
+ *   err: the (integer) SASL error code reflecting the state of the attempt 
+ *        (e.g. SASL_OK, SASL_CONTINUE, SASL_BADMECH, ...)
+ *   data: data that the server wants to send to the client in order 
+ *         to continue the authN attempt. Returned as a Lua string object.
+ */
+
+static int cyrussasl_sasl_server_start(lua_State *l)
 {
   int numargs = lua_gettop(l);
   int err;
@@ -274,44 +307,55 @@ static int _cyrussasl_sasl_server_start(lua_State *l)
   size_t len;
   unsigned outlen;
 
-  if (numargs != 4) {
-    lua_pushstring(l, "usage: conn = cyrussasl:server_start(conn,mech,data,len)");
+  if (numargs != 3) {
+    lua_pushstring(l, 
+		   "usage: "
+		   "(err, data) = cyrussasl.server_start(conn, mech, data)");
     lua_error(l);
     return 0;
   }
 
-  // pull arguments off of the lua stack.
+  /* Pull arguments off of the stack... */
   conn = (sasl_conn_t *)tolightuserdata(l, 1);
   mech = tostring(l, 2);
-  // data may be nil, or a pointer to data...
+  /* Allow the 'data' param to be nil, or an empty string. */
   if ( lua_type(l, 3) == LUA_TNIL ) {
     data = NULL;
     len = 0;
   } else {
     data = (char *)tolstring(l, 3, &len);
   }
-  // FIXME: not using arg 4
-  //  len = tointeger(l, 4);
-  lua_pop(l, 4);
+  lua_pop(l, 3);
 
-  //  outlen = len;
+  err = sasl_server_start( conn,   /* returned pointer from sasl_server_new */
+			   mech,   /* mech, which the client chose          */
+			   data,   /* data that the client sent             */
+			   len,    /* length of the client's data           */
+			   &data,  /* data with which the server will reply */
+			   &outlen /* size of the server's reply            */
+			   );
 
-  err = sasl_server_start( conn,
-			   mech,
-			   data,
-			   len,
-			   &data,
-			   &outlen );
-
-  // push the result code, data and len
-  lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
-  lua_pushlstring(l, data, outlen);
-  lua_pushinteger(l, outlen);
-  return 3;
+  /* Form the reply and push onto the stack */
+  lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
+  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  return 2;                         /* returning 2 items on Lua stack */
 }
 
-// (err, data, datalen) = cyrussasl:server_step(conn, data, datalen)
-static int _cyrussasl_sasl_server_step(lua_State *l)
+/* (err, data) = cyrussasl.server_step(conn, data)
+ *
+ * Arguments:
+ *   conn: the return result from a previous call to server_new
+ *   data: any data that the client might have sent from the previous step.
+ *         Note that data may still be an empty string or nil. (Like the 
+ *         argument of the same name to server_start.)
+ *
+ * Return values:
+ *   err: the (integer) SASL error code reflecting the state of the attempt 
+ *        (e.g. SASL_OK, SASL_CONTINUE, SASL_BADMECH, ...)
+ *   data: data that the server wants to send to the client in order 
+ *         to continue the authN attempt. Returned as a Lua string object.
+ */
+static int cyrussasl_sasl_server_step(lua_State *l)
 {
   int numargs = lua_gettop(l);
   int err;
@@ -320,43 +364,37 @@ static int _cyrussasl_sasl_server_step(lua_State *l)
   size_t len;
   unsigned outlen;
 
-  if (numargs != 3) {
-    lua_pushstring(l, "usage: conn = cyrussasl:server_step(conn,data,len)");
+  if (numargs != 2) {
+    lua_pushstring(l, 
+		   "usage: (err, data) = cyrussasl.server_step(conn, data)");
     lua_error(l);
     return 0;
   }
 
   conn = (sasl_conn_t *)tolightuserdata(l, 1);
   data = tolstring(l, 2, &len);
-  // FIXME: not using arg 3
-  //  len = tointeger(l, 3);
-  lua_pop(l, 3);
+  lua_pop(l, 2);
 
   err = sasl_server_step( conn,
 			  data,
 			  len,
 			  &data,
 			  &outlen );
-  /*
-    -- same as sasl_server_start: no need to explicitly catch the error here,
-    -- as the caller can check the error code
-  if ( err != SASL_OK && err != SASL_CONTINUE) {
-    lua_pushstring(l, "sasl_server_step failed");
-    lua_error(l);
-    return 0;
-  }
-  */
 
-  // push the result code, data and len
-  lua_pushinteger(l, err); // might be SASL_CONTINUE or SASL_OK
-  lua_pushlstring(l, data, outlen);
-  lua_pushinteger(l, outlen);
-
-  return 3;
+  /* Form the reply and push onto the stack */
+  lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
+  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  return 2;                         /* returning 2 items on Lua stack */
 }
 
-// cyrussasl:setprop(conn)
-static int _cyrussasl_sasl_setprop(lua_State *l)
+/* cyrussasl.setprop(conn)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ *
+ * Throws Lua errors if it fails (as it should not typically fail).
+ * Does not return any value.
+ */
+static int cyrussasl_sasl_setprop(lua_State *l)
 {
   sasl_security_properties_t secprops;
   int err;
@@ -364,7 +402,7 @@ static int _cyrussasl_sasl_setprop(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:setprop(conn)");
+    lua_pushstring(l, "usage: cyrussasl.setprop(conn)");
     lua_error(l);
     return 0;
   }
@@ -385,8 +423,14 @@ static int _cyrussasl_sasl_setprop(lua_State *l)
   return 0;
 }
 
-// b64data=cyrussasl:encode64(data, len)
-static int _cyrussasl_sasl_encode64(lua_State *l)
+/* b64data = cyrussasl.encode64(data)
+ *
+ * A convenience method to use the Cyrus SASL library implementation of base64
+ * encoding data. Takes, and returns, a Lua string object. Since Lua strings 
+ * may contain true 8-bit data (including '\0'), the length of the data is 
+ * obtained by examining the length of the string.
+ */
+static int cyrussasl_sasl_encode64(lua_State *l)
 {
   unsigned len_out;
   int alloclen;
@@ -397,20 +441,17 @@ static int _cyrussasl_sasl_encode64(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 2) {
-    lua_pushstring(l, "usage: cyrussasl:encode64(data, len)");
+    lua_pushstring(l, "usage: b64data = cyrussasl.encode64(data, len)");
     lua_error(l);
     return 0;
   }
 
   len = 0;
   data = tolstring(l, 1, &len);
-  // fixme: ignoring the length argument.
-  //len = tointeger(l, 2);
-  lua_pop(l, 2);
+  lua_pop(l, 1);
 
-  // pack up the list of <count> mechanisms stored in <buf/len> as a base64
-  // encoded buffer
-
+  /* Allocate a new buffer that will accommodate the data in its most-possibly-
+   * expanded state. */
   alloclen = ((len / 3) + 1) * 4 + 1;
   buf = malloc(alloclen);
   if (!buf) {
@@ -421,6 +462,7 @@ static int _cyrussasl_sasl_encode64(lua_State *l)
 
   err = sasl_encode64(data, len, buf, alloclen, &len_out);
   if ( err != SASL_OK ) {
+    free(buf);
     lua_pushstring(l, "sasl_encode64 failed");
     lua_error(l);
     return 0;
@@ -431,8 +473,11 @@ static int _cyrussasl_sasl_encode64(lua_State *l)
   return 1;
 }
 
-// data, len = cyrussasl:decode64(b64data)
-static int _cyrussasl_sasl_decode64(lua_State *l)
+/* data = cyrussasl.decode64(b64data)
+ *
+ * Partner function to encode64().
+ */
+static int cyrussasl_sasl_decode64(lua_State *l)
 {
   const char *data = NULL;
   char *outdata = NULL;
@@ -442,7 +487,7 @@ static int _cyrussasl_sasl_decode64(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:decode64(b64data)");
+    lua_pushstring(l, "usage: data = cyrussasl:decode64(b64data)");
     lua_error(l);
     return 0;
   }
@@ -458,7 +503,7 @@ static int _cyrussasl_sasl_decode64(lua_State *l)
     return 0;
   }
 
-  // perform a decode-in-place. According to docs, this is kosher.
+  /* Perform a decode-in-place, which is kosher according to docs. */
   err = sasl_decode64(data, len, outdata, len, &outlen);
   if ( err != SASL_OK ) {
     free(outdata);
@@ -468,14 +513,19 @@ static int _cyrussasl_sasl_decode64(lua_State *l)
   }
 
   lua_pushlstring(l, outdata, outlen);
-  lua_pushinteger(l, outlen);
   free(outdata);
-
-  return 2;
+  return 1;
 }
 
-// mechsdata, len = cyrussasl:listmech(conn)
-static int _cyrussasl_sasl_listmech(lua_State *l)
+/* mechslist = cyrussasl.listmech(conn)
+ *
+ * Return all of the available mechanisms to the Cyrus SASL library.
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ *
+ * mechslist: a Lua string object containing the mechanisms (GSSAPI, et al)
+ */
+static int cyrussasl_sasl_listmech(lua_State *l)
 {
   int err;
   sasl_conn_t *conn = NULL;
@@ -486,7 +536,7 @@ static int _cyrussasl_sasl_listmech(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:listmech(conn)");
+    lua_pushstring(l, "usage: mechslist = cyrussasl.listmech(conn)");
     lua_error(l);
     return 0;
   }
@@ -509,20 +559,27 @@ static int _cyrussasl_sasl_listmech(lua_State *l)
   }
 
   lua_pushlstring(l, data, len);
-  lua_pushinteger(l, len);
-
-  return 2;
+  return 1;
 }
 
-// cyrussasl:get_username(conn)
-// may return an empty string if the negotiation hasn't yet finished
-static int _cyrussasl_get_username(lua_State *l)
+/* user = cyrussasl.get_username(conn)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ * user: the username decoded from user data as part of the negotiation.
+ *
+ * Note that 'user' may be an empty string if the negotiation hasn't 
+ * extracted a username for any reason (e.g. incomplete negotiation).
+ * 
+ * Typically used after negotation is successful to find the username 
+ * associated with the authentication that just took place.
+ */
+static int cyrussasl_get_username(lua_State *l)
 {
   sasl_conn_t *conn;
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:get_username(conn)");
+    lua_pushstring(l, "usage: user = cyrussasl.get_username(conn)");
     lua_error(l);
     return 0;
   }
@@ -538,14 +595,17 @@ static int _cyrussasl_get_username(lua_State *l)
   return 1;
 }
 
-// cyrussasl:get_authname(conn)
-// may return an empty string if the negotiation hasn't yet finished
-static int _cyrussasl_get_authname(lua_State *l)
+/* user = cyrussasl.get_authname(conn)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ * user: the authname decoded from user data as part of the negotiation.
+ */
+static int cyrussasl_get_authname(lua_State *l)
 {
   sasl_conn_t *conn;
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:get_authname(conn)");
+    lua_pushstring(l, "usage: user = cyrussasl.get_authname(conn)");
     lua_error(l);
     return 0;
   }
@@ -561,9 +621,15 @@ static int _cyrussasl_get_authname(lua_State *l)
   return 1;
 }
 
-// cyrussasl:get_message(conn)
-// may return an empty string if the negotiation hasn't logged anything
-static int _cyrussasl_get_message(lua_State *l)
+/* message = cyrussasl.get_message(conn)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ * message: the last message emitted by the SASL library during the 
+ *          negotiation. May be an empty string.
+ *
+ * Typically used to find the specifics about a failed negotation.
+ */
+static int cyrussasl_get_message(lua_State *l)
 {
   sasl_conn_t *conn;
   int numargs = lua_gettop(l);
@@ -584,46 +650,51 @@ static int _cyrussasl_get_message(lua_State *l)
   return 1;
 }
 
-// module initializer
+/* Module initializer, called from Lua when the module is loaded. */
 int luaopen_cyrussasl(lua_State *l)
 {
-  // Construct a new namespace table for Lua, and register it as the global 
-  // named "cyrussasl".
+  /* Construct a new namespace table for Lua, and register it as the global 
+   * named "cyrussasl".
+   */
 
-  // put new table on the stack
   lua_newtable(l);
-
-  // 
-  declfunc(l, "setprop", _cyrussasl_sasl_setprop);
-  declfunc(l, "listmech", _cyrussasl_sasl_listmech);
-  declfunc(l, "encode64", _cyrussasl_sasl_encode64);
-  declfunc(l, "decode64", _cyrussasl_sasl_decode64);
-  declfunc(l, "server_init", _cyrussasl_sasl_server_init);
-  declfunc(l, "server_new", _cyrussasl_sasl_server_new);
-  declfunc(l, "server_start", _cyrussasl_sasl_server_start);
-  declfunc(l, "server_step", _cyrussasl_sasl_server_step);
-  declfunc(l, "get_username", _cyrussasl_get_username);
-  declfunc(l, "get_authname", _cyrussasl_get_authname);
-  declfunc(l, "get_message", _cyrussasl_get_message);
-
+  declfunc(l, "setprop", cyrussasl_sasl_setprop);
+  declfunc(l, "listmech", cyrussasl_sasl_listmech);
+  declfunc(l, "encode64", cyrussasl_sasl_encode64);
+  declfunc(l, "decode64", cyrussasl_sasl_decode64);
+  declfunc(l, "server_init", cyrussasl_sasl_server_init);
+  declfunc(l, "server_new", cyrussasl_sasl_server_new);
+  declfunc(l, "server_start", cyrussasl_sasl_server_start);
+  declfunc(l, "server_step", cyrussasl_sasl_server_step);
+  declfunc(l, "get_username", cyrussasl_get_username);
+  declfunc(l, "get_authname", cyrussasl_get_authname);
+  declfunc(l, "get_message", cyrussasl_get_message);
   lua_setglobal(l, "cyrussasl");
 
-  // ... and leaving a copy on the stack, too.
+  /* ... would be nice to be able to return a second copy of that table on 
+   * the stack, so that the caller can refer to it directly. Not sure what 
+   * the best method is to perform the setup, but it seems that both of these
+   * mechanisms are common (in the few modules I've examined).
+   * For now, I'll just make a second copy and return it - but this needs
+   * to be fixed later.
+   *
+   * hmm... if this just does a "return 1", what's on the top of the stack
+   * after having called lua_setglobal? Might just be the table we're
+   * looking for...
+   */
+
   lua_newtable(l);
-  declfunc(l, "setprop", _cyrussasl_sasl_setprop);
-  declfunc(l, "listmech", _cyrussasl_sasl_listmech);
-  declfunc(l, "encode64", _cyrussasl_sasl_encode64);
-  declfunc(l, "decode64", _cyrussasl_sasl_decode64);
-  declfunc(l, "server_init", _cyrussasl_sasl_server_init);
-  declfunc(l, "server_new", _cyrussasl_sasl_server_new);
-  declfunc(l, "server_start", _cyrussasl_sasl_server_start);
-  declfunc(l, "server_step", _cyrussasl_sasl_server_step);
-  declfunc(l, "get_username", _cyrussasl_get_username);
-  declfunc(l, "get_authname", _cyrussasl_get_authname);
-  declfunc(l, "get_message", _cyrussasl_get_message);
-
-  //SASL_CB_AUTHNAME
-
+  declfunc(l, "setprop", cyrussasl_sasl_setprop);
+  declfunc(l, "listmech", cyrussasl_sasl_listmech);
+  declfunc(l, "encode64", cyrussasl_sasl_encode64);
+  declfunc(l, "decode64", cyrussasl_sasl_decode64);
+  declfunc(l, "server_init", cyrussasl_sasl_server_init);
+  declfunc(l, "server_new", cyrussasl_sasl_server_new);
+  declfunc(l, "server_start", cyrussasl_sasl_server_start);
+  declfunc(l, "server_step", cyrussasl_sasl_server_step);
+  declfunc(l, "get_username", cyrussasl_get_username);
+  declfunc(l, "get_authname", cyrussasl_get_authname);
+  declfunc(l, "get_message", cyrussasl_get_message);
   return 1;
 }
 
