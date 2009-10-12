@@ -273,9 +273,54 @@ static int cyrussasl_sasl_server_step(lua_State *l)
   return 2;                         /* returning 2 items on Lua stack */
 }
 
-/* cyrussasl.setprop(conn)
+/* cyrussasl.setssf(conn, min_ssf, max_ssf)
  *
  * conn: the conn pointer from cyrussasl.server_new().
+ * min_ssf, max_ssf: set the minimum and maximum security strength factor 
+ *                   required for this AuthN.
+ *
+ * Throws Lua errors if it fails (as it should not typically fail).
+ * Does not return any value.
+ */
+static int cyrussasl_setssf(lua_State *l)
+{
+  sasl_security_properties_t secprops;
+  int err;
+  int min_ssf, max_ssf;
+  struct _sasl_ctx *ctx = NULL;
+
+  int numargs = lua_gettop(l);
+  if (numargs != 3) {
+    lua_pushstring(l, "usage: cyrussasl.setssf(conn, min_ssf, max_ssf)");
+    lua_error(l);
+    return 0;
+  }
+
+  ctx     = get_context(l, -3);
+  min_ssf = tointeger(l, -2);
+  max_ssf = tointeger(l, -1);
+  lua_pop(l, 3);
+
+  memset(&secprops, 0L, sizeof(secprops));
+  secprops.min_ssf = min_ssf;
+  secprops.max_ssf = max_ssf;
+
+  err = sasl_setprop(ctx->conn, SASL_SEC_PROPS, &secprops);
+  if ( err != SASL_OK ) {
+    lua_pushstring(l, "setssf failed");
+    lua_error(l);
+    return 0;
+  }
+
+  return 0;
+}
+
+
+/* cyrussasl.setprop(conn, propnum, val)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ * propnum: an integer corresponding to the property to set
+ * val: a lua string object
  *
  * Throws Lua errors if it fails (as it should not typically fail).
  * Does not return any value.
@@ -284,22 +329,26 @@ static int cyrussasl_sasl_setprop(lua_State *l)
 {
   sasl_security_properties_t secprops;
   int err;
+  int proptype;
+  const void *proparg;
   struct _sasl_ctx *ctx = NULL;
 
   int numargs = lua_gettop(l);
-  if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl.setprop(conn)");
+  if (numargs != 3) {
+    lua_pushstring(l, "usage: cyrussasl.setprop(conn, propnum, propval)");
     lua_error(l);
     return 0;
   }
 
-  ctx = get_context(l, -1);
-  lua_pop(l, 1);
+  ctx      = get_context(l, -3);
+  proptype = tointeger(l, -2);
+  proparg  = tolstring(l, -1, NULL);
+  lua_pop(l, 3);
 
   memset(&secprops, 0L, sizeof(secprops));
   secprops.max_ssf = UINT_MAX;
   
-  err = sasl_setprop(ctx->conn, SASL_SEC_PROPS, &secprops);
+  err = sasl_setprop(ctx->conn, proptype, &proparg);
   if ( err != SASL_OK ) {
     lua_pushstring(l, "sasl_setprop failed");
     lua_error(l);
@@ -417,24 +466,34 @@ static int cyrussasl_sasl_listmech(lua_State *l)
   struct _sasl_ctx *ctx = NULL;
   const char *ext_authid = NULL;
   const char *data = NULL;
+  const char *prefix = NULL;
+  const char *separator = NULL;
+  const char *suffix = NULL;
   unsigned len;
   int count;
 
   int numargs = lua_gettop(l);
-  if (numargs != 1) {
-    lua_pushstring(l, "usage: mechslist = cyrussasl.listmech(conn)");
+  if (numargs != 5) {
+    lua_pushstring(l, 
+		   "usage: "
+		   "mechslist = cyrussasl.listmech"
+		   "(conn, authid, prefix, separator, suffix)");
     lua_error(l);
     return 0;
   }
 
-  ctx = get_context(l, -1);
+  ext_authid = tostring(l, -1);
+  prefix = tostring(l, -2);
+  separator = tostring(l, -3);
+  suffix = tostring(l, -4);
+  ctx = get_context(l, -5);
   lua_pop(l, 1);
 
   err = sasl_listmech(ctx->conn,
-		      ext_authid,
-		      NULL,
-		      " ",
-		      NULL,
+		      ext_authid[0] ? ext_authid : NULL,
+		      prefix[0]     ?     prefix : NULL,
+		      separator[0]  ?  separator : NULL,
+		      suffix[0]     ?     suffix : NULL,
 		      &data,
 		      &len,
 		      &count);
@@ -551,6 +610,7 @@ static const luaL_reg meta[] = {
 
 /* function table for this module */
 static const struct luaL_reg methods[] = {
+  { "setssf",       cyrussasl_setssf            },
   { "setprop",      cyrussasl_sasl_setprop      },
   { "listmech",     cyrussasl_sasl_listmech     },
   { "encode64",     cyrussasl_sasl_encode64     },
