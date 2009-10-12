@@ -29,10 +29,6 @@ Installation instructions:
 Bugs:
 *****
 
-* Does not allow one to set arguments for setprop or listmech. These
-  will be addressed shortly, and will require a change in the
-  arguments when these methods are called.
-
 * Does not contain any client-side functionality. To be added; should
   not be difficult, now that the general architecture is in place.
 
