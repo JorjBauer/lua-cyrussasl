@@ -13,8 +13,6 @@ struct _sasl_ctx {
   char *last_message;
   char *user;
   char *authname;
-  time_t timestamp;
-  struct _sasl_ctx *next;
 };
 
 #endif
