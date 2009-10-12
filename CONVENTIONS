@@ -1,0 +1,25 @@
+Two spaces to a tab.
+
+I put braces on the same line as their 'if', but not on the same line as 
+function definitions or structs/enums.
+
+Functions which are not for use outside of a module are named
+starting with underscores. While it is safe to say that the definition
+
+	void _func()
+
+should actually be 
+
+	static void _func()
+
+the reverse is not necessarily true - a function could be destined to
+be called from outside this module via a dispatch table. For example,
+the function
+
+	static int cyrussasl_get_username(lua_State *l)
+
+is for direct consumption by Lua, but via a dispatch table. (It is not
+for consumption by other C methods directly, which is why I have
+attributed it static.)
+
+
