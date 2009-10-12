@@ -1,19 +1,27 @@
-#LUAPATH=/usr/share/lua/5.1
-#CPATH=/usr/lib/lua/5.1
-LUAPATH=/usr/local/share/lua/5.1
-CPATH=/usr/local/lib/lua/5.1
-
-TARGET=cyrussasl.so
-OBJS=cyrussasl.o luaabstract.o
-
-# Linux
+# Linux (Debian Lenny)
 #CFLAGS=-g -O2 -fpic -I/usr/include/lua5.1
 #LDFLAGS=-O -shared -fpic -lsasl2
+#LUAPATH=/usr/share/lua/5.1
+#CPATH=/usr/lib/lua/5.1
 
 # MacOS
 CFLAGS=-g -Wall -O2
 LDFLAGS=-bundle -undefined dynamic_lookup -lsasl2
 MACOSX_VERSION=10.5
+LUAPATH=/usr/local/share/lua/5.1
+CPATH=/usr/local/lib/lua/5.1
+
+#########################################################
+#
+# YOU SHOULD NOT HAVE TO CHANGE ANYTHING BELOW THIS LINE.
+# If you do, then send me email letting me know what and 
+# why!
+# -- Jorj Bauer <jorj@jorj.org>
+#
+#########################################################
+
+TARGET=cyrussasl.so
+OBJS=cyrussasl.o luaabstract.o
 
 all: $(TARGET)
 

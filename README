@@ -1,0 +1,55 @@
+Cyrus SASL library for Lua 5.1
+
+(c) 2009 Jorj Bauer <jorj@jorj.org>
+
+This is released under a BSD license; see the file LICENSE for details.
+
+**************************
+Installation instructions:
+**************************
+
+0. Install Cyrus SASL.
+
+1. Edit the Makefile. You'll need to comment out the architecture blocks
+   that don't pertain to your platform. (As of this writing, this package 
+   works on MacOS 10.5 and Debian Lenny. This will likely function on 
+   other platforms as well, but I have not explicitly tested on them. If you 
+   have a Makefile configuration that works on another platform, send me 
+   email with your configuration so that I may include it in a future 
+   verison.)
+
+2. make
+
+3. sudo make install
+
+4. Enjoy.
+
+
+*****
+Bugs:
+*****
+
+* Does not allow one to set arguments for setprop or listmech. These
+  will be addressed shortly, and will require a change in the
+  arguments when these methods are called.
+
+* Does not contain any client-side functionality. To be added; should
+  not be difficult, now that the general architecture is in place.
+
+* To install this properly, you must edit the Makefile. This should be 
+  abstracted into autoconf (or something lighter weight to accomplish the 
+  same thing).
+
+* There is no test suite. I have some unit tests I've been using for
+  pieces of this code, but the harness isn't good enough for me to
+  include it as part of the package yet.
+
+* Installation has been tested under MacOS 10.5 and Linux
+  (specifically, Debian Lenny). Other platforms should be tested.
+
+* Use of stack offsets is not consistent. Not technically a bug
+  (things work) but it makes sense to me that I should go back through
+  and make sure that everything's consistently using negative offsets
+  to reference stack elements.
+
+
