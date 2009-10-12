@@ -34,6 +34,7 @@ struct _sasl_ctx **_new_context(lua_State *L)
   data->conn         = NULL;
   data->last_message = NULL;
   data->user         = NULL;
+  data->authname     = NULL;
 
   /* Now that we have the context struct, we need to construct a Lua variable
    * to carry the data. And that variable needs to callback to our __gc method
@@ -75,13 +76,13 @@ void _free_context(struct _sasl_ctx *ctx)
     free(ctx->user);
   if (ctx->authname)
     free(ctx->authname);
-
   free(ctx);
 }
 
 int _gc_context(lua_State *L)
 {
   struct _sasl_ctx **luadata = (struct _sasl_ctx **)lua_touserdata(L, 1);
+
   if (luadata == NULL) luaL_typerror(L, 1, MODULENAME);
 
   _free_context(*luadata);
