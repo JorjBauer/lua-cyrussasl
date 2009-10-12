@@ -21,7 +21,7 @@ CPATH=/usr/local/lib/lua/5.1
 #########################################################
 
 TARGET=cyrussasl.so
-OBJS=cyrussasl.o luaabstract.o
+OBJS=cyrussasl.o luaabstract.o context.o
 
 all: $(TARGET)
 
@@ -38,7 +38,8 @@ $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -fno-common -c $< -o $@
 
 # Dependencies
-cyrussasl.c: cyrussasl.h luaabstract.c luaabstract.h
+cyrussasl.c: context.h luaabstract.c luaabstract.h
 
 luaabstract.c: luaabstract.h
 
+context.c: context.h

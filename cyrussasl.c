@@ -8,126 +8,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "cyrussasl.h"
+#include "context.h"
 #include "luaabstract.h"
-
-#define MODULENAME "cyrussasl"
-
-/* _new_context returns a lua userdata variable which has two important 
- * properties:
- *
- * 1. It is a pointer to the pointer to a context struct, which carries the 
- *    C-internal state for this SASL negotiation; and 
- * 2. It has a metatable associated with it that will call our destructor when 
- *    Lua decides to garbage-collect the userdata variable.
- */
-struct _sasl_ctx **_new_context(lua_State *L)
-{
-  struct _sasl_ctx *data       = NULL;
-  struct _sasl_ctx **luserdata = NULL;
-
-  data = malloc(sizeof(struct _sasl_ctx));
-  if (!data)
-    return NULL;
-
-  data->magic        = CYRUSSASL_MAGIC;
-  data->conn         = NULL;
-  data->last_message = NULL;
-  data->user         = NULL;
-  data->authname     = NULL;
-
-  /* Now that we have the context struct, we need to construct a Lua variable
-   * to carry the data. And that variable needs to callback to our __gc method
-   * for it in order to deallocate the memory we've just allocated. 
-   * 
-   * Note that we're allocing a new userdata object of the size of the 
-   * _pointer_ to our new struct.
-   */
-
-  luserdata = (struct _sasl_ctx **) lua_newuserdata(L, sizeof(data));
-  if (!luserdata) {
-    lua_pushstring(L, "Unable to alloc newuserdata");
-    lua_error(L);
-    return NULL;
-  }
-  *luserdata = data;                /* Store the pointer in the userdata */
-  luaL_getmetatable(L, MODULENAME); /* Retrieve the metatable w/ __gc hook */
-  lua_setmetatable(L, -2);          /* Set luserdata's metatable to that one */
-
-  return luserdata;
-}
-
-struct _sasl_ctx *get_context(lua_State *l, int idx)
-{
-  struct _sasl_ctx **ctxp = (struct _sasl_ctx **)lua_touserdata(l, idx);
-  if (ctxp == NULL) luaL_typerror(l, idx, MODULENAME);
-
-  return *ctxp;
-}
-
-void _free_context(struct _sasl_ctx *ctx)
-{
-  if (!ctx || ctx->magic != CYRUSSASL_MAGIC) 
-    return;
-
-  if (ctx->last_message)
-    free(ctx->last_message);
-  if (ctx->user)
-    free(ctx->user);
-  if (ctx->authname)
-    free(ctx->authname);
-  free(ctx);
-}
-
-int _gc_context(lua_State *L)
-{
-  struct _sasl_ctx **luadata = (struct _sasl_ctx **)lua_touserdata(L, 1);
-
-  if (luadata == NULL) luaL_typerror(L, 1, MODULENAME);
-
-  _free_context(*luadata);
-  return 0;
-}
-
-void _set_context_conn(struct _sasl_ctx *ctx, sasl_conn_t *conn)
-{
-  if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
-    return;
-
-  ctx->conn = conn;
-}
-
-void _set_context_message(struct _sasl_ctx *ctx, const char *msg)
-{
-  if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
-    return;
-  if (!msg)
-    return;
-
-  if (ctx->last_message)
-    free(ctx->last_message);
-  ctx->last_message = malloc(strlen(msg)+1);
-  if (!ctx->last_message)
-    return;
-
-  strcpy(ctx->last_message, msg); // only as safe as the strlen() was...
-}
-
-void _set_context_user(struct _sasl_ctx *ctx, const char *usr)
-{
-  if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
-    return;
-  if (!usr)
-    return;
-
-  if (ctx->user)
-    free(ctx->user);
-  ctx->user = malloc(strlen(usr)+1);
-  if (!ctx->user)
-    return;
-
-  strcpy(ctx->user, usr); // only as safe as the strlen() was...
-}
 
 static int _sasl_log(void *context,
 		     int priority,
@@ -136,7 +18,7 @@ static int _sasl_log(void *context,
   if (! message)
     return SASL_BADPARAM;
 
-  _set_context_message(context, message);
+  set_context_message(context, message);
 
   return SASL_OK;
 }
@@ -164,7 +46,7 @@ static int _sasl_canon_user(sasl_conn_t *conn,
   strcpy(out_user, user);
   *out_ulen = strlen(user);
 
-  _set_context_user(context, out_user);
+  set_context_user(context, out_user);
 
   return SASL_OK;
 }
@@ -252,7 +134,7 @@ static int cyrussasl_sasl_server_new(lua_State *l)
   realm = tostring(l, 3);
   lua_pop(l, 3);
 
-  ctxp = _new_context(l);
+  ctxp = new_context(l);
   if (!ctxp) {
     lua_pushstring(l, "Unable to allocate a new context");
     lua_error(l);
@@ -279,7 +161,7 @@ static int cyrussasl_sasl_server_new(lua_State *l)
   }
 
   /* Return 1 item on the stack (a userdata pointer to our state struct).
-   * It was already pushed on the stack by _new_context(). */
+   * It was already pushed on the stack by new_context(). */
 
   return 1; /* return # of arguments returned on stack */
 }
@@ -580,6 +462,7 @@ static int cyrussasl_sasl_listmech(lua_State *l)
 static int cyrussasl_get_username(lua_State *l)
 {
   struct _sasl_ctx *ctx = NULL;
+  const char *ret;
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
@@ -591,8 +474,9 @@ static int cyrussasl_get_username(lua_State *l)
   ctx = get_context(l, -1);
   lua_pop(l, 1);
 
-  if (ctx->user)
-    lua_pushstring(l, ctx->user);
+  ret = get_context_user(ctx);
+  if (ret)
+    lua_pushstring(l, ret);
   else
     lua_pushstring(l, "");
 
@@ -607,7 +491,9 @@ static int cyrussasl_get_username(lua_State *l)
 static int cyrussasl_get_authname(lua_State *l)
 {
   struct _sasl_ctx *ctx = NULL;
+  const char *ret;
   int numargs = lua_gettop(l);
+
   if (numargs != 1) {
     lua_pushstring(l, "usage: user = cyrussasl.get_authname(conn)");
     lua_error(l);
@@ -617,8 +503,9 @@ static int cyrussasl_get_authname(lua_State *l)
   ctx = get_context(l, -1);
   lua_pop(l, 1);
 
-  if (ctx->authname)
-    lua_pushstring(l, ctx->authname);
+  ret = get_context_authname(ctx);
+  if (ret)
+    lua_pushstring(l, ret);
   else
     lua_pushstring(l, "");
 
@@ -636,6 +523,7 @@ static int cyrussasl_get_authname(lua_State *l)
 static int cyrussasl_get_message(lua_State *l)
 {
   struct _sasl_ctx *ctx = NULL;
+  const char *ret;
   int numargs = lua_gettop(l);
   if (numargs != 1) {
     lua_pushstring(l, "usage: cyrussasl:get_message(conn)");
@@ -646,17 +534,18 @@ static int cyrussasl_get_message(lua_State *l)
   ctx = get_context(l, -1);
   lua_pop(l, 1);
 
-  if (ctx->last_message)
-    lua_pushstring(l, ctx->last_message);
+  ret = get_context_message(ctx);
+  if (ret)
+    lua_pushstring(l, ret);
   else
     lua_pushstring(l, "");
 
   return 1;
 }
 
-/* metatable, hook for calling _gc_context on context structs */
+/* metatable, hook for calling gc_context on context structs */
 static const luaL_reg meta[] = {
-  { "__gc", _gc_context },
+  { "__gc", gc_context },
   { NULL,   NULL        }
 };
 
