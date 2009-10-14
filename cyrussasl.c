@@ -71,7 +71,7 @@ static int cyrussasl_sasl_server_init(lua_State *l)
     return 0;
   }
 
-  appname = tostring(l, 1);
+  appname = tostring(l, -1);
   lua_pop(l, 1);
 
   err = sasl_server_init( NULL, /* Global callbacks */
@@ -99,15 +99,21 @@ static void _init_callbacks(struct _sasl_ctx *ctx)
   ctx->callbacks[2].context = NULL;
 }
 
-/* conn = cyrussasl.server_new("serice_name", "host FQDN", "user realm")
+/* conn = cyrussasl.server_new("serice_name", "host FQDN", "user realm",
+ *                             "iplocal", "ipremote")
  *
  * conn: an opaque data structure (from Lua's perspective) related to this 
  *       specific authentication attempt.
  * service_name: the name of the service that's being protected by SASL (e.g.
  *               xmpp, smtp, ...)
  * host FQDN: the fully-qualified domain name of the server that users 
- *            are connecting to
- * user realm: the authentication user realm to use for AuthN purposes
+ *            are connecting to. May be nil.
+ * user realm: the authentication user realm to use for AuthN purposes. 
+ *             May be nil.
+ * iplocal: Either nil or a string of the form "a.b.c.d;port" (for IPv4). 
+ *          Used to tell the SASL library what the local side of the connection
+ *          is using.
+ * ipremote: Either nil or a string denoting the remote side of the connection.
  *
  * On error, this throws Lua error exceptions. (It is not the typical
  * case that this method might cause an error, except when attempting
@@ -121,10 +127,12 @@ static int cyrussasl_sasl_server_new(lua_State *l)
   sasl_conn_t *conn = NULL;
   struct _sasl_ctx **ctxp = NULL;
 
-  if (numargs != 3) {
+  if (numargs != 5) {
     lua_pushstring(l, 
 		   "usage: "
-		   "conn = cyrussasl.server_new(service_name, fqdn, realm)");
+		   "conn = "
+		   "cyrussasl.server_new(service_name, fqdn, realm, "
+		   "iplocal, ipremote)");
     lua_error(l);
     return 0;
   }
@@ -132,7 +140,9 @@ static int cyrussasl_sasl_server_new(lua_State *l)
   service_name = tostring(l, 1);
   fqdn = tostring(l, 2);
   realm = tostring(l, 3);
-  lua_pop(l, 3);
+  iplocal = tostring(l, 4);
+  ipremote = tostring(l, 5);
+  lua_pop(l, 5);
 
   ctxp = new_context(l);
   if (!ctxp) {
@@ -146,8 +156,8 @@ static int cyrussasl_sasl_server_new(lua_State *l)
   err = sasl_server_new( service_name,       /* service name (passed in) */
 			 fqdn,               /* serverFQDN               */
 			 realm,              /* user_realm               */
-			 NULL,               /* iplocalport              */
-			 NULL,               /* ipremoteport             */
+			 iplocal,            /* iplocalport              */
+			 ipremote,           /* ipremoteport             */
 			 (*ctxp)->callbacks, /* per-connection callbacks */
 			 0,                  /* flags                    */
 			 &conn );            /* returned connection ptr  */
@@ -490,10 +500,10 @@ static int cyrussasl_sasl_listmech(lua_State *l)
   lua_pop(l, 1);
 
   err = sasl_listmech(ctx->conn,
-		      ext_authid[0] ? ext_authid : NULL,
-		      prefix[0]     ?     prefix : NULL,
-		      separator[0]  ?  separator : NULL,
-		      suffix[0]     ?     suffix : NULL,
+		      ext_authid,
+		      prefix,
+		      separator,
+		      suffix,
 		      &data,
 		      &len,
 		      &count);

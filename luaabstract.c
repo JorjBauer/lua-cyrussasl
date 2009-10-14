@@ -20,6 +20,9 @@ const char *tolstring(lua_State *l, int index, size_t *len)
 
 const char *tostring(lua_State *l, int index)
 {
+  if (lua_type(l, index) == LUA_TNIL)
+    return NULL;
+
   return tolstring(l, index, NULL);
 }
 
