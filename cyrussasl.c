@@ -121,7 +121,7 @@ static void _init_callbacks(struct _sasl_ctx *ctx)
  */
 static int cyrussasl_sasl_server_new(lua_State *l)
 {
-  const char *service_name, *fqdn, *realm;
+  const char *service_name, *fqdn, *realm, *iplocal, *ipremote;
   int numargs = lua_gettop(l);
   int err;
   sasl_conn_t *conn = NULL;
