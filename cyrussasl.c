@@ -483,11 +483,11 @@ static int cyrussasl_sasl_listmech(lua_State *l)
   int count;
 
   int numargs = lua_gettop(l);
-  if (numargs != 1) {
+  if (numargs != 5) {
     lua_pushstring(l, 
 		   "usage: "
 		   "mechslist = cyrussasl.listmech"
-		   "(conn)");
+		   "(conn, authid, prefix, separator, suffix)");
     lua_error(l);
     return 0;
   }
