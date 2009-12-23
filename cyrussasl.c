@@ -462,11 +462,15 @@ static int cyrussasl_sasl_decode64(lua_State *l)
   return 1;
 }
 
-/* mechslist = cyrussasl.listmech(conn)
+/* mechslist = cyrussasl.listmech((conn, authid, prefix, separator, suffix)
  *
  * Return all of the available mechanisms to the Cyrus SASL library.
  *
  * conn: the conn pointer from cyrussasl.server_new().
+ * authid: the username trying to authenticate. May be nil.
+ * prefix: prefix to prepend to the returned string. May be an empty string.
+ * separator: the string to use to separate mechanisms. May be empty.
+ * suffix: suffix to postpend to the returned string. May be empty.
  *
  * mechslist: a Lua string object containing the mechanisms (GSSAPI, et al)
  */
