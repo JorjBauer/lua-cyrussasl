@@ -496,12 +496,12 @@ static int cyrussasl_sasl_listmech(lua_State *l)
     return 0;
   }
 
-  ext_authid = tostring(l, -1);
-  prefix = tostring(l, -2);
-  separator = tostring(l, -3);
-  suffix = tostring(l, -4);
-  ctx = get_context(l, -5);
-  lua_pop(l, 1);
+  suffix     = tostring(l, -1);
+  separator  = tostring(l, -2);
+  prefix     = tostring(l, -3);
+  ext_authid = tostring(l, -4);
+  ctx        = get_context(l, -5);
+  lua_pop(l, 5);
 
   err = sasl_listmech(ctx->conn,
 		      ext_authid,
