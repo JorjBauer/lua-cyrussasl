@@ -46,6 +46,7 @@ struct _sasl_ctx **new_context(lua_State *L)
   if (!luserdata) {
     lua_pushstring(L, "Unable to alloc newuserdata");
     lua_error(L);
+    free(data);
     return NULL;
   }
   *luserdata = data;                /* Store the pointer in the userdata */
