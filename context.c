@@ -29,10 +29,12 @@ struct _sasl_ctx **new_context(lua_State *L)
     return NULL;
 
   data->magic        = CYRUSSASL_MAGIC;
+  data->L            = L;
   data->conn         = NULL;
   data->last_message = NULL;
   data->user         = NULL;
   data->authname     = NULL;
+  data->canon_cb_ref = LUA_REFNIL;
 
   /* Now that we have the context struct, we need to construct a Lua variable
    * to carry the data. And that variable needs to callback to our __gc method
@@ -84,6 +86,8 @@ int gc_context(lua_State *L)
 
   if (luadata == NULL) luaL_typerror(L, 1, MODULENAME);
 
+  if ((*luadata)->canon_cb_ref != LUA_REFNIL)
+    luaL_unref(L, LUA_REGISTRYINDEX, (*luadata)->canon_cb_ref);
   free_context(*luadata);
   return 0;
 }

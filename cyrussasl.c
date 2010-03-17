@@ -31,20 +31,42 @@ static int _sasl_canon_user(sasl_conn_t *conn,
 			    char *out_user, unsigned out_umax,
 			    unsigned *out_ulen)
 {
+  struct _sasl_ctx *ctxp = context;
+
   if (!conn || !context || !user)
     return SASL_BADPARAM;
 
   if (!(flags & SASL_CU_AUTHID) && !(flags & SASL_CU_AUTHZID))
     return SASL_BADPARAM;
 
-  if (((struct _sasl_ctx *)context)->magic != CYRUSSASL_MAGIC)
+  if (ctxp->magic != CYRUSSASL_MAGIC)
     return SASL_BADPARAM;
 
-  if (strlen(user) >= out_umax)
+  if (ctxp->canon_cb_ref == LUA_REFNIL) {
+    if (strlen(user) >= out_umax)
       return SASL_BUFOVER;
 
-  strcpy(out_user, user);
-  *out_ulen = strlen(user);
+    strcpy(out_user, user);
+    *out_ulen = strlen(user);
+  } else {
+    const char *str = NULL;
+    size_t len = 0;
+    /* Function to call */
+    lua_rawgeti(ctxp->L, LUA_REGISTRYINDEX, ctxp->canon_cb_ref);
+    /* Arguments */
+    lua_pushlstring(ctxp->L, user, ulen);
+    /* Call cb(user) */
+    lua_call(ctxp->L, 1, 1);
+
+    /* Get the result */
+    str = lua_tolstring(ctxp->L, -1, &len);
+    if (str == NULL)
+      return SASL_BADPROT;
+    if (len + 1 > out_umax)
+      return SASL_BUFOVER;
+    memcpy(out_user, str, len + 1);
+    *out_ulen = len;
+  }
 
   set_context_user(context, out_user);
 
@@ -616,6 +638,52 @@ static int cyrussasl_get_message(lua_State *l)
   return 1;
 }
 
+/* old_cb = cyrussasl.set_canon_cb(conn, cb)
+ *
+ * conn: the conn pointer from cyrussasl.server_new()
+ * cb: a function that takes a string and returns the canonical
+ *     representation of the username
+ * old_cb: the previous callback (or nil)
+ *
+ * Used to canonicalize usernames.
+ */
+static int cyrussasl_set_canon_cb(lua_State *l)
+{
+  struct _sasl_ctx *ctx = NULL;
+  int numargs = lua_gettop(l);
+  int old_ref;
+  int type;
+
+  if (numargs != 2) {
+    lua_pushstring(l, "usage: cyrussasl:set_canon_cb(conn, cb)");
+    lua_error(l);
+    return 0;
+  }
+
+  type = lua_type(l, -1);
+  if (type != LUA_TFUNCTION && type != LUA_TNIL) {
+    char err[256];
+    snprintf(err, sizeof(err),
+	      "expected function or nil, got %s",
+	       lua_typename(l, type));
+    lua_pushstring(l, err);
+    lua_error(l);
+    return 0;
+  }
+
+  ctx = get_context(l, -2);
+
+  old_ref = ctx->canon_cb_ref;
+  /* Store the new function */
+  ctx->canon_cb_ref = luaL_ref(l, LUA_REGISTRYINDEX);
+
+  /* Push the old function onto the stack and free its ref */
+  lua_rawgeti(l, LUA_REGISTRYINDEX, old_ref);
+  luaL_unref(l, LUA_REGISTRYINDEX, old_ref);
+
+  return 1;
+}
+
 /* metatable, hook for calling gc_context on context structs */
 static const luaL_reg meta[] = {
   { "__gc", gc_context },
@@ -636,6 +704,7 @@ static const struct luaL_reg methods[] = {
   { "get_username", cyrussasl_get_username      },
   { "get_authname", cyrussasl_get_authname      },
   { "get_message",  cyrussasl_get_message       },
+  { "set_canon_cb", cyrussasl_set_canon_cb      },
   { NULL,           NULL                        }
 };
 

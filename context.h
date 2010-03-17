@@ -18,11 +18,13 @@
 
 struct _sasl_ctx {
   unsigned long   magic;
+  lua_State       *L;
   sasl_conn_t     *conn;
   sasl_callback_t callbacks[3];
   char            *last_message;
   char            *user;
   char            *authname;
+  int             canon_cb_ref;
 };
 
 struct _sasl_ctx **new_context(lua_State *L);
