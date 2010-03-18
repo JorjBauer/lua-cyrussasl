@@ -109,11 +109,7 @@ void set_context_message(struct _sasl_ctx *ctx, const char *msg)
 
   if (ctx->last_message)
     free(ctx->last_message);
-  ctx->last_message = malloc(strlen(msg)+1);
-  if (!ctx->last_message)
-    return;
-
-  strcpy(ctx->last_message, msg); // only as safe as the strlen() was...
+  ctx->last_message = strdup(msg);
 }
 
 void set_context_user(struct _sasl_ctx *ctx, const char *usr)
@@ -125,11 +121,7 @@ void set_context_user(struct _sasl_ctx *ctx, const char *usr)
 
   if (ctx->user)
     free(ctx->user);
-  ctx->user = malloc(strlen(usr)+1);
-  if (!ctx->user)
-    return;
-
-  strcpy(ctx->user, usr); // only as safe as the strlen() was...
+  ctx->user = strdup(usr);
 }
 
 void set_context_authname(struct _sasl_ctx *ctx, const char *usr)
@@ -141,11 +133,7 @@ void set_context_authname(struct _sasl_ctx *ctx, const char *usr)
 
   if (ctx->authname)
     free(ctx->authname);
-  ctx->user = malloc(strlen(usr)+1);
-  if (!ctx->authname)
-    return;
-
-  strcpy(ctx->authname, usr); // only as safe as the strlen() was...
+  ctx->authname = strdup(usr);
 }
 
 const char *get_context_message(struct _sasl_ctx *ctx)
