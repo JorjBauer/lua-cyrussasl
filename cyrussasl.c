@@ -43,11 +43,12 @@ static int _sasl_canon_user(sasl_conn_t *conn,
     return SASL_BADPARAM;
 
   if (ctxp->canon_cb_ref == LUA_REFNIL) {
-    if (strlen(user) >= out_umax)
+    if (ulen > out_umax)
       return SASL_BUFOVER;
 
-    strcpy(out_user, user);
-    *out_ulen = strlen(user);
+    /* out_user may be the same as user, so memmove, not memcpy */
+    memmove(out_user, user, ulen);
+    *out_ulen = ulen;
   } else {
     const char *str = NULL;
     size_t len = 0;
