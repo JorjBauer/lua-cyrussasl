@@ -661,7 +661,7 @@ static int cyrussasl_set_canon_cb(lua_State *l)
     return 0;
   }
 
-  type = lua_type(l, -1);
+  type = lua_type(l, 2);
   if (type != LUA_TFUNCTION && type != LUA_TNIL) {
     char err[256];
     snprintf(err, sizeof(err),
@@ -672,7 +672,7 @@ static int cyrussasl_set_canon_cb(lua_State *l)
     return 0;
   }
 
-  ctx = get_context(l, -2);
+  ctx = get_context(l, 1);
 
   old_ref = ctx->canon_cb_ref;
   /* Store the new function */
