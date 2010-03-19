@@ -61,12 +61,19 @@ static int _sasl_canon_user(sasl_conn_t *conn,
 
     /* Get the result */
     str = lua_tolstring(ctxp->L, -1, &len);
-    if (str == NULL)
+    if (str == NULL) {
+      lua_pop(ctxp->L, 1);
       return SASL_BADPROT;
-    if (len + 1 > out_umax)
+    }
+
+    if (len + 1 > out_umax) {
+      lua_pop(ctxp->L, 1);
       return SASL_BUFOVER;
+    }
+
     memcpy(out_user, str, len + 1);
     *out_ulen = len;
+    lua_pop(ctxp->L, 1);
   }
 
   set_context_user(context, out_user);
