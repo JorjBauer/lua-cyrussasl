@@ -32,6 +32,7 @@ static int _sasl_canon_user(sasl_conn_t *conn,
 			    unsigned *out_ulen)
 {
   struct _sasl_ctx *ctxp = context;
+  int ret = SASL_OK;
 
   if (!conn || !context || !user)
     return SASL_BADPARAM;
@@ -61,24 +62,23 @@ static int _sasl_canon_user(sasl_conn_t *conn,
 
     /* Get the result */
     str = lua_tolstring(ctxp->L, -1, &len);
-    if (str == NULL) {
-      lua_pop(ctxp->L, 1);
-      return SASL_BADPROT;
+    if (str == NULL)
+      ret = SASL_BADPROT;
+    else if (len + 1 > out_umax)
+      ret = SASL_BUFOVER;
+    else {
+      memcpy(out_user, str, len + 1);
+      *out_ulen = len;
     }
 
-    if (len + 1 > out_umax) {
-      lua_pop(ctxp->L, 1);
-      return SASL_BUFOVER;
-    }
-
-    memcpy(out_user, str, len + 1);
-    *out_ulen = len;
+    /* Pop the result of the call off the stack */
     lua_pop(ctxp->L, 1);
   }
 
-  set_context_user(context, out_user);
+  if (ret == SASL_OK)
+    set_context_user(context, out_user);
 
-  return SASL_OK;
+  return ret;
 }
 
 /* 
