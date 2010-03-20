@@ -336,9 +336,9 @@ static int cyrussasl_setssf(lua_State *l)
     return 0;
   }
 
-  ctx     = get_context(l, -3);
-  min_ssf = tointeger(l, -2);
-  max_ssf = tointeger(l, -1);
+  ctx     = get_context(l, 1);
+  min_ssf = tointeger(l, 2);
+  max_ssf = tointeger(l, 3);
   lua_pop(l, 3);
 
   memset(&secprops, 0L, sizeof(secprops));
@@ -380,9 +380,9 @@ static int cyrussasl_sasl_setprop(lua_State *l)
     return 0;
   }
 
-  ctx      = get_context(l, -3);
-  proptype = tointeger(l, -2);
-  proparg  = tolstring(l, -1, NULL);
+  ctx      = get_context(l, 1);
+  proptype = tointeger(l, 2);
+  proparg  = tolstring(l, 3, NULL);
   lua_pop(l, 3);
 
   memset(&secprops, 0L, sizeof(secprops));
@@ -526,11 +526,11 @@ static int cyrussasl_sasl_listmech(lua_State *l)
     return 0;
   }
 
-  suffix     = tostring(l, -1);
-  separator  = tostring(l, -2);
-  prefix     = tostring(l, -3);
-  ext_authid = tostring(l, -4);
-  ctx        = get_context(l, -5);
+  ctx        = get_context(l, 1);
+  ext_authid = tostring(l, 2);
+  prefix     = tostring(l, 3);
+  separator  = tostring(l, 4);
+  suffix     = tostring(l, 5);
   lua_pop(l, 5);
 
   err = sasl_listmech(ctx->conn,
@@ -574,7 +574,7 @@ static int cyrussasl_get_username(lua_State *l)
     return 0;
   }
 
-  ctx = get_context(l, -1);
+  ctx = get_context(l, 1);
   lua_pop(l, 1);
 
   ret = get_context_user(ctx);
@@ -603,7 +603,7 @@ static int cyrussasl_get_authname(lua_State *l)
     return 0;
   }
 
-  ctx = get_context(l, -1);
+  ctx = get_context(l, 1);
   lua_pop(l, 1);
 
   ret = get_context_authname(ctx);
@@ -634,7 +634,7 @@ static int cyrussasl_get_message(lua_State *l)
     return 0;
   }
 
-  ctx = get_context(l, -1);
+  ctx = get_context(l, 1);
   lua_pop(l, 1);
 
   ret = get_context_message(ctx);
