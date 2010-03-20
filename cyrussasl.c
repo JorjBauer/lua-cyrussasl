@@ -56,9 +56,20 @@ static int _sasl_canon_user(sasl_conn_t *conn,
     /* Function to call */
     lua_rawgeti(ctxp->L, LUA_REGISTRYINDEX, ctxp->canon_cb_ref);
     /* Arguments */
+
+    /* Username */
     lua_pushlstring(ctxp->L, user, ulen);
+    /* Realm */
+    lua_pushstring(ctxp->L, user_realm);
+    /* flags (the type of username) */
+    if ((flags & SASL_CU_AUTHID) && (flags & SASL_CU_AUTHZID))
+      lua_pushliteral(ctxp->L, "both");
+    else if (flags & SASL_CU_AUTHID)
+      lua_pushliteral(ctxp->L, "authcid");
+    else
+      lua_pushliteral(ctxp->L, "authzid");
     /* Call cb(user) */
-    lua_call(ctxp->L, 1, 1);
+    lua_call(ctxp->L, 3, 1);
 
     /* Get the result */
     str = lua_tolstring(ctxp->L, -1, &len);
@@ -637,11 +648,15 @@ static int cyrussasl_get_message(lua_State *l)
 /* old_cb = cyrussasl.set_canon_cb(conn, cb)
  *
  * conn: the conn pointer from cyrussasl.server_new()
- * cb: a function that takes a string and returns the canonical
- *     representation of the username
+ * cb: a function that is passed the username, realm (may be nil), and
+ *     either "authcid", "authzid", or "both" to indicate whether
+ *     the username is the authentication identity, the authorization
+ *     identity, or both (both seems to happen under some circumstances).
+ *     The function should return a normalized username.
  * old_cb: the previous callback (or nil)
  *
  * Used to canonicalize usernames.
+ *
  */
 static int cyrussasl_set_canon_cb(lua_State *l)
 {
