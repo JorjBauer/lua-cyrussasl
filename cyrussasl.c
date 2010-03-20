@@ -102,7 +102,6 @@ static int cyrussasl_sasl_server_init(lua_State *l)
   }
 
   appname = tostring(l, -1);
-  lua_pop(l, 1);
 
   err = sasl_server_init( NULL, /* Global callbacks */
 			  appname ); 
@@ -172,7 +171,6 @@ static int cyrussasl_sasl_server_new(lua_State *l)
   realm = tostring(l, 3);
   iplocal = tostring(l, 4);
   ipremote = tostring(l, 5);
-  lua_pop(l, 5);
 
   ctxp = new_context(l);
   if (!ctxp) {
@@ -249,9 +247,8 @@ static int cyrussasl_sasl_server_start(lua_State *l)
     data = NULL;
     len = 0;
   } else {
-    data = (char *)tolstring(l, 3, &len);
+    data = tolstring(l, 3, &len);
   }
-  lua_pop(l, 3);
 
   err = sasl_server_start( ctx->conn, /* saved sasl connection              */
 			   mech,   /* mech, which the client chose          */
@@ -299,7 +296,6 @@ static int cyrussasl_sasl_server_step(lua_State *l)
 
   ctx = get_context(l, 1);
   data = tolstring(l, 2, &len);
-  lua_pop(l, 2);
 
   err = sasl_server_step( ctx->conn,
 			  data,
@@ -339,7 +335,6 @@ static int cyrussasl_setssf(lua_State *l)
   ctx     = get_context(l, 1);
   min_ssf = tointeger(l, 2);
   max_ssf = tointeger(l, 3);
-  lua_pop(l, 3);
 
   memset(&secprops, 0L, sizeof(secprops));
   secprops.min_ssf = min_ssf;
@@ -383,11 +378,10 @@ static int cyrussasl_sasl_setprop(lua_State *l)
   ctx      = get_context(l, 1);
   proptype = tointeger(l, 2);
   proparg  = tolstring(l, 3, NULL);
-  lua_pop(l, 3);
 
   memset(&secprops, 0L, sizeof(secprops));
   secprops.max_ssf = UINT_MAX;
-  
+
   err = sasl_setprop(ctx->conn, proptype, &proparg);
   if ( err != SASL_OK ) {
     lua_pushstring(l, "sasl_setprop failed");
@@ -423,7 +417,6 @@ static int cyrussasl_sasl_encode64(lua_State *l)
 
   len = 0;
   data = tolstring(l, 1, &len);
-  lua_pop(l, 1);
 
   /* Allocate a new buffer that will accommodate the data in its most-possibly-
    * expanded state. */
@@ -468,7 +461,6 @@ static int cyrussasl_sasl_decode64(lua_State *l)
   }
 
   data = tostring(l, 1);
-  lua_pop(l, 1);
   len = strlen(data);
 
   outdata = malloc(len);
@@ -531,7 +523,6 @@ static int cyrussasl_sasl_listmech(lua_State *l)
   prefix     = tostring(l, 3);
   separator  = tostring(l, 4);
   suffix     = tostring(l, 5);
-  lua_pop(l, 5);
 
   err = sasl_listmech(ctx->conn,
 		      ext_authid,
@@ -575,7 +566,6 @@ static int cyrussasl_get_username(lua_State *l)
   }
 
   ctx = get_context(l, 1);
-  lua_pop(l, 1);
 
   ret = get_context_user(ctx);
   if (ret)
@@ -604,7 +594,6 @@ static int cyrussasl_get_authname(lua_State *l)
   }
 
   ctx = get_context(l, 1);
-  lua_pop(l, 1);
 
   ret = get_context_authname(ctx);
   if (ret)
@@ -635,7 +624,6 @@ static int cyrussasl_get_message(lua_State *l)
   }
 
   ctx = get_context(l, 1);
-  lua_pop(l, 1);
 
   ret = get_context_message(ctx);
   if (ret)
