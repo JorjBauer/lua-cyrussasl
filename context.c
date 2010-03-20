@@ -71,6 +71,8 @@ void free_context(struct _sasl_ctx *ctx)
   if (!ctx || ctx->magic != CYRUSSASL_MAGIC) 
     return;
 
+  if (ctx->conn)
+    sasl_dispose(&ctx->conn);
   if (ctx->last_message)
     free(ctx->last_message);
   if (ctx->user)
