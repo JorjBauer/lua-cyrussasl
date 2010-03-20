@@ -455,7 +455,7 @@ static int cyrussasl_sasl_decode64(lua_State *l)
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: data = cyrussasl:decode64(b64data)");
+    lua_pushstring(l, "usage: data = cyrussasl.decode64(b64data)");
     lua_error(l);
     return 0;
   }
@@ -618,7 +618,7 @@ static int cyrussasl_get_message(lua_State *l)
   const char *ret;
   int numargs = lua_gettop(l);
   if (numargs != 1) {
-    lua_pushstring(l, "usage: cyrussasl:get_message(conn)");
+    lua_pushstring(l, "usage: cyrussasl.get_message(conn)");
     lua_error(l);
     return 0;
   }
@@ -651,7 +651,7 @@ static int cyrussasl_set_canon_cb(lua_State *l)
   int type;
 
   if (numargs != 2) {
-    lua_pushstring(l, "usage: cyrussasl:set_canon_cb(conn, cb)");
+    lua_pushstring(l, "usage: cyrussasl.set_canon_cb(conn, cb)");
     lua_error(l);
     return 0;
   }
