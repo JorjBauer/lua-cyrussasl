@@ -11,6 +11,24 @@
 #include "context.h"
 #include "luaabstract.h"
 
+/* strdup() is a POSIX function that is not part of the ANSI standard. This
+ * simple wrapper provides the same functionality for platforms that don't
+ * have POSIX defined. */
+char *local_strdup(const char *s1)
+{
+#ifdef POSIX
+  return strdup(s1);
+#else
+  char *ret = malloc(strlen(s1)+1);
+  if (!ret)
+    return NULL;
+
+  strcpy(ret, s1);
+
+  return ret;
+#endif
+}
+
 /* _new_context returns a lua userdata variable which has two important 
  * properties:
  *
@@ -111,7 +129,7 @@ void set_context_message(struct _sasl_ctx *ctx, const char *msg)
 
   if (ctx->last_message)
     free(ctx->last_message);
-  ctx->last_message = strdup(msg);
+  ctx->last_message = local_strdup(msg);
 }
 
 void set_context_user(struct _sasl_ctx *ctx, const char *usr)
@@ -123,7 +141,7 @@ void set_context_user(struct _sasl_ctx *ctx, const char *usr)
 
   if (ctx->user)
     free(ctx->user);
-  ctx->user = strdup(usr);
+  ctx->user = local_strdup(usr);
 }
 
 void set_context_authname(struct _sasl_ctx *ctx, const char *usr)
@@ -135,7 +153,7 @@ void set_context_authname(struct _sasl_ctx *ctx, const char *usr)
 
   if (ctx->authname)
     free(ctx->authname);
-  ctx->authname = strdup(usr);
+  ctx->authname = local_strdup(usr);
 }
 
 const char *get_context_message(struct _sasl_ctx *ctx)
