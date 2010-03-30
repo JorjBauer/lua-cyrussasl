@@ -32,15 +32,14 @@ static int _sasl_canon_user(sasl_conn_t *conn,
 			    unsigned *out_ulen)
 {
   struct _sasl_ctx *ctxp = context;
-  int ret = SASL_OK;
 
-  if (!conn || !context || !user)
+  if (!conn || !context || !user || ctxp->magic != CYRUSSASL_MAGIC)
     return SASL_BADPARAM;
 
   if (!(flags & SASL_CU_AUTHID) && !(flags & SASL_CU_AUTHZID))
     return SASL_BADPARAM;
 
-  if (ctxp->magic != CYRUSSASL_MAGIC)
+  if (!out_user || !out_ulen || out_umax == 0)
     return SASL_BADPARAM;
 
   if (ctxp->canon_cb_ref == LUA_REFNIL) {
@@ -50,44 +49,52 @@ static int _sasl_canon_user(sasl_conn_t *conn,
     /* out_user may be the same as user, so memmove, not memcpy */
     memmove(out_user, user, ulen);
     *out_ulen = ulen;
-  } else {
-    const char *str = NULL;
-    size_t len = 0;
-    /* Function to call */
-    lua_rawgeti(ctxp->L, LUA_REGISTRYINDEX, ctxp->canon_cb_ref);
-    /* Arguments */
 
-    /* Username */
-    lua_pushlstring(ctxp->L, user, ulen);
-    /* Realm */
-    lua_pushstring(ctxp->L, user_realm);
-    /* flags (the type of username) */
-    if ((flags & SASL_CU_AUTHID) && (flags & SASL_CU_AUTHZID))
-      lua_pushliteral(ctxp->L, "both");
-    else if (flags & SASL_CU_AUTHID)
-      lua_pushliteral(ctxp->L, "authcid");
-    else
-      lua_pushliteral(ctxp->L, "authzid");
-    /* Call cb(user) */
-    lua_call(ctxp->L, 3, 1);
-
-    /* Get the result */
-    str = lua_tolstring(ctxp->L, -1, &len);
-    if (str == NULL)
-      ret = SASL_BADPROT;
-    else if (len + 1 > out_umax)
-      ret = SASL_BUFOVER;
-    else {
-      memcpy(out_user, str, len + 1);
-      *out_ulen = len;
-    }
-
-    /* Pop the result of the call off the stack */
-    lua_pop(ctxp->L, 1);
+    set_context_user(context, user, ulen);
+    return SASL_OK;
   }
 
+  /* We have a callback to deal with. */
+
+  int ret = SASL_OK;
+  const char *str = NULL;
+  size_t len = 0;
+  
+  /* Function to call */
+  lua_rawgeti(ctxp->L, LUA_REGISTRYINDEX, ctxp->canon_cb_ref);
+  
+  /* Username */
+  lua_pushlstring(ctxp->L, user, ulen);
+  /* Realm */
+  lua_pushstring(ctxp->L, user_realm);
+  /* flags (the type of username) */
+  if ((flags & SASL_CU_AUTHID) && (flags & SASL_CU_AUTHZID))
+    lua_pushliteral(ctxp->L, "both");
+  else if (flags & SASL_CU_AUTHID)
+    lua_pushliteral(ctxp->L, "authcid");
+  else
+    lua_pushliteral(ctxp->L, "authzid");
+  /* Perform: str = cb(user, user_realm, "both|authcid|authzid") */
+  lua_call(ctxp->L, 3, 1);
+  
+  /* Get the result */
+  str = lua_tolstring(ctxp->L, -1, &len);
+  if (str == NULL)
+    ret = SASL_BADPROT;
+  else if (len >= out_umax)
+    ret = SASL_BUFOVER;
+  else {
+    memcpy(out_user, str, len + 1);
+    *out_ulen = len;
+  }
+  
+  /* Pop the result of the call off the stack */
+  lua_pop(ctxp->L, 1);
+
   if (ret == SASL_OK)
-    set_context_user(context, out_user);
+    set_context_user(context, out_user, *out_ulen);
+  else
+    set_context_user(context, NULL, 0);
 
   return ret;
 }
@@ -112,7 +119,7 @@ static int cyrussasl_sasl_server_init(lua_State *l)
     return 0;
   }
 
-  appname = tostring(l, -1);
+  appname = tostring(l, 1);
 
   err = sasl_server_init( NULL, /* Global callbacks */
 			  appname ); 
@@ -568,6 +575,7 @@ static int cyrussasl_get_username(lua_State *l)
 {
   struct _sasl_ctx *ctx = NULL;
   const char *ret;
+  unsigned ulen;
 
   int numargs = lua_gettop(l);
   if (numargs != 1) {
@@ -578,9 +586,9 @@ static int cyrussasl_get_username(lua_State *l)
 
   ctx = get_context(l, 1);
 
-  ret = get_context_user(ctx);
-  if (ret)
-    lua_pushstring(l, ret);
+  ret = get_context_user(ctx, &ulen);
+  if (ret && ulen)
+    lua_pushstring(l, ret); /* Not quite right - username might contain NULLs... */
   else
     lua_pushstring(l, "");
 
