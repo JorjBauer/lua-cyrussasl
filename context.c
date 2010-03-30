@@ -29,7 +29,7 @@ char *local_strdup(const char *s1)
 #endif
 }
 
-/* _new_context returns a lua userdata variable which has two important 
+/* new_context returns a lua userdata variable which has two important 
  * properties:
  *
  * 1. It is a pointer to the pointer to a context struct, which carries the 
@@ -132,7 +132,7 @@ void set_context_message(struct _sasl_ctx *ctx, const char *msg)
   ctx->last_message = local_strdup(msg);
 }
 
-void set_context_user(struct _sasl_ctx *ctx, const char *usr)
+void set_context_user(struct _sasl_ctx *ctx, const char *usr, unsigned ulen)
 {
   if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
     return;
@@ -141,7 +141,19 @@ void set_context_user(struct _sasl_ctx *ctx, const char *usr)
 
   if (ctx->user)
     free(ctx->user);
-  ctx->user = local_strdup(usr);
+
+  ctx->ulen = ulen;
+
+  if (usr == NULL || ulen == 0) {
+    ctx->user = NULL;
+    return;
+  }
+
+  ctx->user = malloc(ulen+1);
+  if (!ctx->user)
+    return;
+  memcpy(ctx->user, usr, ulen);
+  ctx->user[ulen] = '\0';
 }
 
 void set_context_authname(struct _sasl_ctx *ctx, const char *usr)
@@ -164,11 +176,14 @@ const char *get_context_message(struct _sasl_ctx *ctx)
   return ctx->last_message;
 }
 
-const char *get_context_user(struct _sasl_ctx *ctx)
+const char *get_context_user(struct _sasl_ctx *ctx, unsigned *ulen_out)
 {
   if (!ctx || ctx->magic != CYRUSSASL_MAGIC)
     return NULL;
 
+  if (ulen_out)
+    *ulen_out = ctx->ulen;
+  
   return ctx->user;
 }
 
