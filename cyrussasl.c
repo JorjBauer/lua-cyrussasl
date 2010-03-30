@@ -43,11 +43,12 @@ static int _sasl_canon_user(sasl_conn_t *conn,
     return SASL_BADPARAM;
 
   if (ctxp->canon_cb_ref == LUA_REFNIL) {
-    if (ulen > out_umax)
+    if (ulen >= out_umax)
       return SASL_BUFOVER;
 
     /* out_user may be the same as user, so memmove, not memcpy */
     memmove(out_user, user, ulen);
+    out_user[ulen] = '\0';
     *out_ulen = ulen;
 
     set_context_user(context, user, ulen);
