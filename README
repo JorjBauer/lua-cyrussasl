@@ -42,10 +42,3 @@ Bugs:
 
 * Installation has been tested under MacOS 10.5 and Linux
   (specifically, Debian Lenny). Other platforms should be tested.
-
-* Use of stack offsets is not consistent. Not technically a bug
-  (things work) but it makes sense to me that I should go back through
-  and make sure that everything's consistently using negative offsets
-  to reference stack elements.
-
-
