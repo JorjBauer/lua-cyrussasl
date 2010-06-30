@@ -11,14 +11,49 @@
 #include "context.h"
 #include "luaabstract.h"
 
+static const char * const level_strings[] = {
+	"none",
+	"error",
+	"fail",
+	"warn",
+	"note",
+	"debug",
+	"trace",
+	"pass",
+	NULL
+};
+
+static int log_cb_ref = LUA_REFNIL;
+static int minimum_log_prio = SASL_LOG_NONE;
+
 static int _sasl_log(void *context,
 		     int priority,
 		     const char *message)
 {
-  if (! message)
+  struct _sasl_ctx *ctxp = context;
+
+  if (!message || !context || ctxp->magic != CYRUSSASL_MAGIC)
+    return SASL_BADPARAM;
+
+  if (priority < 0 || priority >= sizeof(level_strings) - 1)
     return SASL_BADPARAM;
 
   set_context_message(context, message);
+
+  if (priority != SASL_LOG_NONE && priority <= minimum_log_prio &&
+	log_cb_ref != LUA_REFNIL) {
+    /* Function to call */
+    lua_rawgeti(ctxp->L, LUA_REGISTRYINDEX, log_cb_ref);
+
+    /* Message */
+    lua_pushstring(ctxp->L, message);
+
+    /* Priority */
+    lua_pushstring(ctxp->L, level_strings[priority]);
+
+    /* Perform: cb(message, priority) */
+    lua_call(ctxp->L, 2, 0);
+  }
 
   return SASL_OK;
 }
@@ -704,6 +739,49 @@ static int cyrussasl_set_canon_cb(lua_State *l)
   return 1;
 }
 
+/* old_cb = cyrussasl.set_log_cb(cb, minimum priority level)
+ *
+ * cb: a function that is passed the log message and priority.
+ *     priority is one of "error", "fail" (auth failures), "warn",
+ *     "note", "debug", "trace", and "pass" (includes passwords).
+ * minimum priority level: the minimum severity level messages to call
+ *     in the cb.  The default is "warn".
+ * old_cb: the previous callback (or nil)
+ *
+ * Used for debug logging.
+ */
+static int cyrussasl_set_log_cb(lua_State *l)
+{
+  int old_ref;
+  int type;
+
+  type = lua_type(l, 1);
+  if (type != LUA_TFUNCTION && type != LUA_TNIL) {
+    char err[256];
+    snprintf(err, sizeof(err),
+	      "expected function or nil, got %s",
+	       lua_typename(l, type));
+    lua_pushstring(l, err);
+    lua_error(l);
+    return 0;
+  }
+
+  /* Store the minimum desired log level */
+  minimum_log_prio = luaL_checkoption(l, 2, "warn", level_strings);
+  if (lua_gettop(l) > 1)
+    lua_pop(l, 1);
+
+  old_ref = log_cb_ref;
+  /* Store the new function */
+  log_cb_ref = luaL_ref(l, LUA_REGISTRYINDEX);
+
+  /* Push the old function onto the stack and free its ref */
+  lua_rawgeti(l, LUA_REGISTRYINDEX, old_ref);
+  luaL_unref(l, LUA_REGISTRYINDEX, old_ref);
+
+  return 1;
+}
+
 /* metatable, hook for calling gc_context on context structs */
 static const luaL_reg meta[] = {
   { "__gc", gc_context },
@@ -725,6 +803,7 @@ static const struct luaL_reg methods[] = {
   { "get_authname", cyrussasl_get_authname      },
   { "get_message",  cyrussasl_get_message       },
   { "set_canon_cb", cyrussasl_set_canon_cb      },
+  { "set_log_cb",   cyrussasl_set_log_cb        },
   { NULL,           NULL                        }
 };
 
