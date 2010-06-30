@@ -753,6 +753,7 @@ static int cyrussasl_set_canon_cb(lua_State *l)
 static int cyrussasl_set_log_cb(lua_State *l)
 {
   int old_ref;
+  int numargs = lua_gettop(l);
   int type;
 
   type = lua_type(l, 1);
@@ -768,8 +769,8 @@ static int cyrussasl_set_log_cb(lua_State *l)
 
   /* Store the minimum desired log level */
   minimum_log_prio = luaL_checkoption(l, 2, "warn", level_strings);
-  if (lua_gettop(l) > 1)
-    lua_pop(l, 1);
+  if (numargs > 1)
+    lua_pop(l, numargs - 1);
 
   old_ref = log_cb_ref;
   /* Store the new function */
