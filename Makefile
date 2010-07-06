@@ -20,6 +20,8 @@ CPATH=/usr/local/lib/lua/5.1
 #
 #########################################################
 
+BRANCH_VERSION=.branch_version
+BUILD_VERSION=.build_version
 TARGET=cyrussasl.so
 OBJS=cyrussasl.o luaabstract.o context.o
 
@@ -31,11 +33,14 @@ install: $(TARGET)
 clean:
 	rm -f *.o *.so *~
 
-$(TARGET): $(OBJS)
+distclean: clean
+	rm -f $(BUILD_VERSION) $(BRANCH_VERSION)
+
+$(TARGET): version $(OBJS)
 	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS)
 
 .c.o:
-	$(CC) $(CFLAGS) -fno-common -c $< -o $@
+	$(CC) $(CFLAGS) -DVERSION="\"$$(cat VERSION).$$(cat $(BRANCH_VERSION))-$$(cat $(BUILD_VERSION))\"" -fno-common -c $< -o $@
 
 # Dependencies
 cyrussasl.c: context.h luaabstract.c luaabstract.h
@@ -43,3 +48,12 @@ cyrussasl.c: context.h luaabstract.c luaabstract.h
 luaabstract.c: luaabstract.h
 
 context.c: context.h
+
+# build_version stuff
+.PHONY: version branch_version
+
+version:
+	@if ! test -f $(BUILD_VERSION); then echo 0 > $(BUILD_VERSION); fi
+	@echo $$(($$(cat $(BUILD_VERSION)) + 1)) > $(BUILD_VERSION)
+	@if ! test -f $(BRANCH_VERSION); then git log --pretty=oneline -1|cut -c1-8 > $(BRANCH_VERSION); fi
+
