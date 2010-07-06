@@ -40,5 +40,6 @@ Bugs:
   pieces of this code, but the harness isn't good enough for me to
   include it as part of the package yet.
 
-* Installation has been tested under MacOS 10.5 and Linux
-  (specifically, Debian Lenny). Other platforms should be tested.
+* Installation has been tested under MacOS 10.5, 10.6 and Linux
+  (specifically, Debian Lenny and RHEL 5.5). Other platforms should be
+  tested.
