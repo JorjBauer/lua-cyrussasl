@@ -11,6 +11,17 @@
 #include "context.h"
 #include "luaabstract.h"
 
+#ifndef VERSION
+#define VERSION "undefined"
+#endif
+
+/* It's unfortunate that Cyrus SASL doesn't export these strings itself; it 
+ * only exports constants that refer to them. We could go crazy and 
+ * dynamically build this list but that seems like a lot of overhead for 
+ * something that they're unlikely to change.
+ * Of course, now that I've written this, they'll certainly reorder the 
+ * error levels and these strings will no longer reflect reality :P
+ */
 static const char * const level_strings[] = {
 	"none",
 	"error",
@@ -133,6 +144,24 @@ static int _sasl_canon_user(sasl_conn_t *conn,
     set_context_user(context, NULL, 0);
 
   return ret;
+}
+
+/* version = cyrussasl.get_version()
+ *
+ * Returns a string of the lua_cyrussasl library version.
+ */
+static int cyrussasl_get_version(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  if (numargs != 0) {
+    lua_pushstring(l, "usage: cyrussasl.get_version()");
+    lua_error(l);
+    return 0;
+  }
+
+  lua_pushstring(l, VERSION);
+
+  return 1;
 }
 
 /* 
@@ -796,6 +825,7 @@ static const struct luaL_reg methods[] = {
   { "listmech",     cyrussasl_sasl_listmech     },
   { "encode64",     cyrussasl_sasl_encode64     },
   { "decode64",     cyrussasl_sasl_decode64     },
+  { "get_version",  cyrussasl_get_version       },
   { "server_init",  cyrussasl_sasl_server_init  },
   { "server_new",   cyrussasl_sasl_server_new   },
   { "server_start", cyrussasl_sasl_server_start },
