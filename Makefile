@@ -1,10 +1,16 @@
-# Linux (Debian Lenny)
+# Linux (tested w/ Debian Lenny, probably works on many others as well)
 #CFLAGS=-g -O2 -fpic -I/usr/include/lua5.1
 #LDFLAGS=-O -shared -fpic -lsasl2
 #LUAPATH=/usr/share/lua/5.1
 #CPATH=/usr/lib/lua/5.1
 
-# MacOS
+# OpenBSD 4.8 (thanks lintech@yandex.ru)
+#CFLAGS=-g -O2 -fpic -I/usr/include
+#LDFLAGS=-O -shared -fpic -lsasl2
+#LUAPATH=/usr/share/lua/5.1
+#CPATH=/usr/lib/lua/5.1
+
+# MacOS (tested with 10.6, 10.7, 10.8)
 CFLAGS=-g -Wall -O2
 LDFLAGS=-bundle -undefined dynamic_lookup -lsasl2
 MACOSX_VERSION=10.5
