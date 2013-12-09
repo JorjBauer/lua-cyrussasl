@@ -1,5 +1,4 @@
 #include <lua.h>
-#include <lauxlib.h>
 
 #include <sasl/sasl.h>
 #include <sasl/saslutil.h>
@@ -813,13 +812,13 @@ static int cyrussasl_set_log_cb(lua_State *l)
 }
 
 /* metatable, hook for calling gc_context on context structs */
-static const luaL_reg meta[] = {
+static const luaL_Reg meta[] = {
   { "__gc", gc_context },
   { NULL,   NULL        }
 };
 
 /* function table for this module */
-static const struct luaL_reg methods[] = {
+static const struct luaL_Reg methods[] = {
   { "setssf",       cyrussasl_setssf            },
   { "setprop",      cyrussasl_sasl_setprop      },
   { "listmech",     cyrussasl_sasl_listmech     },
