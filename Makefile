@@ -10,6 +10,12 @@
 #LUAPATH=/usr/share/lua/5.1
 #CPATH=/usr/lib/lua/5.1
 
+#FreeBSD 10.1 (thanks peter@flytrace.com)
+#CFLAGS=-g -O2 -fpic -I/usr/local/include/lua51 -I/usr/local/include
+#LDFLAGS=-v -O -shared -fpic -lsasl2 -L/usr/local/lib
+#LUAPATH=/usr/local/share/lua/5.1
+#CPATH=/usr/local/lib/lua/5.1
+
 # MacOS (tested with 10.6, 10.7, 10.8)
 CFLAGS=-g -Wall -O2
 LDFLAGS=-bundle -undefined dynamic_lookup -lsasl2
