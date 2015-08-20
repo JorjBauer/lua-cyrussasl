@@ -881,6 +881,83 @@ static int cyrussasl_set_log_cb(lua_State *l)
   return 1;
 }
 
+/* (err, data) = cyrussasl.encode(conn, msg)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ * msg: the data to encode
+ *
+ * FIXME finish this doc
+ */
+
+static int cyrussasl_encode(lua_State *l)
+{
+  struct _sasl_ctx *ctx = NULL;
+  const char *msg;
+  size_t msg_len = 0;
+  unsigned out_len = 0;
+  const char *out_data = NULL;
+  int err;
+
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    lua_pushstring(l, "usage: cyrussasl.encode(conn, msg)");
+    lua_error(l);
+    return 0;
+  }
+
+  ctx = get_context(l, 1);
+  msg = tolstring(l, 2, &msg_len);
+
+  err = sasl_encode(ctx->conn, msg, msg_len, &out_data, &out_len);
+  lua_pushinteger(l, err);
+  if (err == SASL_OK) {
+    lua_pushlstring(l, out_data, out_len);
+  } else {
+    lua_pushliteral(l, "");
+  }
+
+  return 2;
+}
+
+/* (err, data) = cyrussasl.decode(conn, msg)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ * msg: the data to decode
+ *
+ * FIXME finish this doc
+ */
+
+static int cyrussasl_decode(lua_State *l)
+{
+  struct _sasl_ctx *ctx = NULL;
+  const char *msg;
+  size_t msg_len = 0;
+  unsigned out_len = 0;
+  const char *out_data = NULL;
+  int err;
+
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    lua_pushstring(l, "usage: cyrussasl.decode(conn, msg)");
+    lua_error(l);
+    return 0;
+  }
+
+  ctx = get_context(l, 1);
+  msg = tolstring(l, 2, &msg_len);
+
+  err = sasl_decode(ctx->conn, msg, msg_len, &out_data, &out_len);
+  lua_pushinteger(l, err);
+  if (err == SASL_OK) {
+    lua_pushlstring(l, out_data, out_len);
+  } else {
+    lua_pushliteral(l, "");
+  }
+
+  return 2;
+}
+
+
 /* metatable, hook for calling gc_context on context structs */
 static const luaL_Reg meta[] = {
   { "__gc", gc_context },
@@ -905,6 +982,8 @@ static const struct luaL_Reg methods[] = {
   { "get_message",  cyrussasl_get_message       },
   { "set_canon_cb", cyrussasl_set_canon_cb      },
   { "set_log_cb",   cyrussasl_set_log_cb        },
+  { "encode",       cyrussasl_encode            },
+  { "decode",       cyrussasl_decode            },
   { NULL,           NULL                        }
 };
 
