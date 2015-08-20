@@ -1,4 +1,5 @@
 #include <lua.h>
+#include <lauxlib.h>
 
 #include <sasl/sasl.h>
 #include <sasl/saslutil.h>
@@ -491,8 +492,8 @@ static int cyrussasl_sasl_encode64(lua_State *l)
   int err;
 
   int numargs = lua_gettop(l);
-  if (numargs != 2) {
-    lua_pushstring(l, "usage: b64data = cyrussasl.encode64(data, len)");
+  if (numargs != 1) {
+    lua_pushstring(l, "usage: b64data = cyrussasl.encode64(data)");
     lua_error(l);
     return 0;
   }
@@ -566,7 +567,7 @@ static int cyrussasl_sasl_decode64(lua_State *l)
   return 1;
 }
 
-/* mechslist = cyrussasl.listmech((conn, authid, prefix, separator, suffix)
+/* mechslist = cyrussasl.listmech(conn, authid, prefix, separator, suffix)
  *
  * Return all of the available mechanisms to the Cyrus SASL library.
  *
@@ -624,6 +625,75 @@ static int cyrussasl_sasl_listmech(lua_State *l)
   return 1;
 }
 
+/* data = cyrussasl.getprop(conn, property)
+ *
+ * conn: the conn pointer from cyrussasl.server_new().
+ * property: a SASL property (e.g. SASL_USERNAME, SASL_SSF)
+ * FIXME - finish docs
+ */
+
+static int cyrussasl_getprop(lua_State *l)
+{
+  struct _sasl_ctx *ctx = NULL;
+  unsigned *maxbufsize;
+  const char *strdata;
+  sasl_ssf_t *ssf;
+  int propnum;
+  int ret;
+
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    lua_pushstring(l, "usage: user = cyrussasl.get_prop(conn, property)");
+    lua_error(l);
+    return 0;
+  }
+
+  ctx = get_context(l, 1);
+  propnum = tointeger(l, 2);
+
+  switch (propnum) {
+    /* strings */
+  case SASL_USERNAME:
+  case SASL_DEFUSERREALM:
+  case SASL_SERVICE:
+  case SASL_SERVERFQDN:
+  case SASL_AUTHSOURCE:
+  case SASL_MECHNAME:
+  case SASL_PLUGERR:
+  case SASL_IPLOCALPORT:
+  case SASL_IPREMOTEPORT:
+    ret = sasl_getprop(ctx->conn, propnum, (const void **)&strdata); // return strdata
+    lua_pushstring(l, strdata);
+    lua_pushnumber(l, ret);
+    return 2;
+    
+
+  case SASL_SSF: // sasl_ssf_t*
+    ret = sasl_getprop(ctx->conn, propnum, (const void **)&ssf); // return *ssf
+    lua_pushnumber(l, *ssf);
+    lua_pushnumber(l, ret);
+    return 2;
+
+  case SASL_MAXOUTBUF: // unsigned
+    ret = sasl_getprop(ctx->conn, propnum, (const void **)&maxbufsize); // return *maxbufsize
+    lua_pushnumber(l, *maxbufsize);
+    lua_pushnumber(l, ret);
+    return 2;
+
+    /* I'm not sure how SASL_GETOPTCTX would be useful to a Lua
+     * caller, so I'm not including it for the moment.  If you're
+     * reading this and have a good use case, drop me a line and we'll
+     * figure out how to integrate it. */
+
+  default:
+    lua_pushstring(l, "Unsupported property passed to cyrussasl.getprop()");
+    lua_error(l);
+    return 0;
+  }
+
+  /* NOTREACHED */
+}
+
 /* user = cyrussasl.get_username(conn)
  *
  * conn: the conn pointer from cyrussasl.server_new().
@@ -652,7 +722,7 @@ static int cyrussasl_get_username(lua_State *l)
 
   ret = get_context_user(ctx, &ulen);
   if (ret && ulen)
-    lua_pushstring(l, ret); /* Not quite right - username might contain NULLs... */
+    lua_pushlstring(l, ret, ulen);
   else
     lua_pushstring(l, "");
 
@@ -829,6 +899,7 @@ static const struct luaL_Reg methods[] = {
   { "server_new",   cyrussasl_sasl_server_new   },
   { "server_start", cyrussasl_sasl_server_start },
   { "server_step",  cyrussasl_sasl_server_step  },
+  { "getprop",      cyrussasl_getprop           },
   { "get_username", cyrussasl_get_username      },
   { "get_authname", cyrussasl_get_authname      },
   { "get_message",  cyrussasl_get_message       },
@@ -837,27 +908,60 @@ static const struct luaL_Reg methods[] = {
   { NULL,           NULL                        }
 };
 
+/* SASL constants that we'll export */
+struct _saslconst {
+  const char *name;
+  int val;
+};
+
+static const struct _saslconst constants[] = {
+  { "SASL_USERNAME",     SASL_USERNAME     },
+  { "SASL_SSF",          SASL_SSF          },
+  { "SASL_MAXOUTBUF",    SASL_MAXOUTBUF    },
+  { "SASL_DEFUSERREALM", SASL_DEFUSERREALM },
+  { "SASL_GETOPTCTX",    SASL_GETOPTCTX    },
+  { "SASL_IPLOCALPORT",  SASL_IPLOCALPORT  },
+  { "SASL_IPREMOTEPORT", SASL_IPREMOTEPORT },
+  { "SASL_SERVICE",      SASL_SERVICE      },
+  { "SASL_SERVERFQDN",   SASL_SERVERFQDN   },
+  { "SASL_AUTHSOURCE",   SASL_AUTHSOURCE   },
+  { "SASL_MECHNAME" ,    SASL_MECHNAME     },
+  { "SASL_PLUGERR",      SASL_PLUGERR      },
+  { NULL,                0                 }
+};
+
 /* Module initializer, called from Lua when the module is loaded. */
-int luaopen_cyrussasl(lua_State *l)
+int luaopen_cyrussasl(lua_State *L)
 {
-  /* Construct a new namespace table for Lua, and register it as the global 
-   * named "cyrussasl".
-   */
-  luaL_openlib(l, MODULENAME, methods, 0);
+  const struct _saslconst *p = constants;
 
   /* Create metatable, which is used to tie C data structures to our garbage 
    * collection function. */
-  luaL_newmetatable(l, MODULENAME);
-  luaL_openlib(l, 0, meta, 0);
-  lua_pushliteral(l, "__index");
-  lua_pushvalue(l, -3);               /* dup methods table*/
-  lua_rawset(l, -3);                  /* metatable.__index = methods */
-  lua_pushliteral(l, "__metatable");
-  lua_pushvalue(l, -3);               /* dup methods table*/
-  lua_rawset(l, -3);                  /* hide metatable:
+  luaL_newmetatable(L, MODULENAME);
+  lua_newtable(L);
+  luaL_setfuncs(L, meta, 0);
+  lua_pushliteral(L, "__index");
+  lua_pushvalue(L, -3);               /* dup methods table*/
+  lua_rawset(L, -3);                  /* metatable.__index = methods */
+  lua_pushliteral(L, "__metatable");
+  lua_pushvalue(L, -3);               /* dup methods table*/
+  lua_rawset(L, -3);                  /* hide metatable:
                                          metatable.__metatable = methods */
-  lua_pop(l, 1);                      /* drop metatable */
-  return 1;                           /* return methods on the stack */
+  lua_pop(L, 1);                      /* drop metatable */
+
+  /* Construct a new namespace table for Luaand return it. */
+  lua_newtable(L);
+  luaL_setfuncs(L, methods, 0);
+
+  /* Inject all of the SASL constants in to the table */
+  while (p->name) {
+    lua_pushstring(L, p->name);
+    lua_pushnumber(L, p->val);
+    lua_rawset(L, -3);
+    p++;
+  }
+
+  return 1;                           /* return methods table on the stack */
 
 }
 
