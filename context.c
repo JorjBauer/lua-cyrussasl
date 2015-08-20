@@ -79,7 +79,11 @@ struct _sasl_ctx **new_context(lua_State *L)
 struct _sasl_ctx *get_context(lua_State *l, int idx)
 {
   struct _sasl_ctx **ctxp = (struct _sasl_ctx **)lua_touserdata(l, idx);
-  if (ctxp == NULL) luaL_typerror(l, idx, MODULENAME);
+  if (ctxp == NULL) {
+    lua_pushstring(l, "userdata is NULL");
+    lua_error(l);
+    return NULL;
+  }
 
   return *ctxp;
 }
@@ -104,7 +108,11 @@ int gc_context(lua_State *L)
 {
   struct _sasl_ctx **luadata = (struct _sasl_ctx **)lua_touserdata(L, 1);
 
-  if (luadata == NULL) luaL_typerror(L, 1, MODULENAME);
+  if (luadata == NULL) {
+    lua_pushstring(L, "userdata is NULL");
+    lua_error(L);
+    return 0;
+  }
 
   if ((*luadata)->canon_cb_ref != LUA_REFNIL)
     luaL_unref(L, LUA_REGISTRYINDEX, (*luadata)->canon_cb_ref);
