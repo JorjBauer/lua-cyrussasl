@@ -1,6 +1,6 @@
-Cyrus SASL library for Lua 5.1
+Cyrus SASL library for Lua 5.1+
 
-(c) 2009 Jorj Bauer <jorj@jorj.org>
+(c) 2009-2015 Jorj Bauer <jorj@jorj.org>
 
 This is released under a BSD license; see the file LICENSE for details.
 
@@ -10,36 +10,30 @@ Installation instructions:
 
 0. Install Cyrus SASL.
 
-1. Edit the Makefile. You'll need to comment out the architecture blocks
-   that don't pertain to your platform. (As of this writing, this package 
-   works on MacOS 10.5 and Debian Lenny. This will likely function on 
-   other platforms as well, but I have not explicitly tested on them. If you 
-   have a Makefile configuration that works on another platform, send me 
-   email with your configuration so that I may include it in a future 
-   verison.)
+1. Install LuaRocks.
 
-2. make
+2. # sudo luarocks install lua-cyrussasl 
+   (which will download and install from luarocks.org); or 
 
-3. sudo make install
+   # sudo luarocks make
+   (if you've downloaded from git and want to build/install from local
+   source)
 
-4. Enjoy.
+3. Enjoy.
 
+If you're not using luarocks, then you can try directly editing and
+using the (deprecated, unmaintained) Makefile. You'll need to comment
+out the architecture blocks that don't pertain to your platform. This
+Makefile was originally written for MacOS 10.5 and Debian Lenny;
+LuaRocks is much more flexible.
 
 *****
 Bugs:
 *****
 
-* Does not contain any client-side functionality. To be added; should
-  not be difficult, now that the general architecture is in place.
+* Prompts aren't implemented in the client functions.
 
-* To install this properly, you must edit the Makefile. This should be 
-  abstracted into autoconf (or something lighter weight to accomplish the 
-  same thing).
+* Server/Client first is essentially hard-coded (it's server-first).
 
-* There is no test suite. I have some unit tests I've been using for
-  pieces of this code, but the harness isn't good enough for me to
-  include it as part of the package yet.
-
-* Installation has been tested under MacOS 10.5, 10.6 and Linux
-  (specifically, Debian Lenny and RHEL 5.5). Other platforms should be
-  tested.
+* It's not clear that encode/decode are useful as implemented (and
+  tests do not cover encode/decode).
