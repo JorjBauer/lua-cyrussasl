@@ -392,6 +392,211 @@ static int cyrussasl_sasl_server_step(lua_State *l)
   return 2;                         /* returning 2 items on Lua stack */
 }
 
+/* 
+ * cyrussasl.client_init()
+ *
+ * This function does not return any values. On failure, it will throw an 
+ * error.
+ */
+static int cyrussasl_sasl_client_init(lua_State *l)
+{
+  const char *appname;
+  int numargs = lua_gettop(l);
+  int err;
+
+  if (numargs != 0) {
+    lua_pushstring(l, "usage: cyrussasl.client_init()");
+    lua_error(l);
+    return 0;
+  }
+
+  err = sasl_client_init( NULL ); /* Global callbacks */
+
+  if (err != SASL_OK) {
+    lua_pushstring(l, "sasl_client_init failed");
+    lua_error(l);
+    return 0;
+  }
+
+  return 0;
+}
+
+/* conn = cyrussasl.client_new("serice_name", "host FQDN", 
+ *                             "iplocal", "ipremote")
+ *
+ * conn: an opaque data structure (from Lua's perspective) related to this 
+ *       specific authentication attempt.
+ * service_name: the name of the service that's being protected by SASL (e.g.
+ *               xmpp, smtp, ...)
+ * host FQDN: the fully-qualified domain name of the server that users 
+ *            are connecting to. May be nil.
+ * iplocal: Either nil or a string of the form "a.b.c.d;port" (for IPv4). 
+ *          Used to tell the SASL library what the local side of the connection
+ *          is using.
+ * ipremote: Either nil or a string denoting the remote side of the connection.
+ *
+ * On error, this throws Lua error exceptions. (It is not the typical
+ * case that this method might cause an error, except when attempting
+ * to set up SASL initially during development.)
+ */
+static int cyrussasl_sasl_client_new(lua_State *l)
+{
+  const char *service_name, *fqdn, *iplocal, *ipremote;
+  int numargs = lua_gettop(l);
+  int err;
+  sasl_conn_t *conn = NULL;
+  struct _sasl_ctx **ctxp = NULL;
+
+  if (numargs != 4) {
+    lua_pushstring(l, 
+		   "usage: "
+		   "conn = "
+		   "cyrussasl.client_new(service_name, fqdn, "
+		   "iplocal, ipremote)");
+    lua_error(l);
+    return 0;
+  }
+
+  service_name = tostring(l, 1);
+  fqdn = tostring(l, 2);
+  iplocal = tostring(l, 3);
+  ipremote = tostring(l, 4);
+
+  ctxp = new_context(l);
+  if (!ctxp) {
+    lua_pushstring(l, "Unable to allocate a new context");
+    lua_error(l);
+    return 0;
+  }
+
+  _init_callbacks(*ctxp);
+
+  err = sasl_client_new( service_name,       /* service name (passed in) */
+			 fqdn,               /* serverFQDN               */
+			 iplocal,            /* iplocalport              */
+			 ipremote,           /* ipremoteport             */
+			 (*ctxp)->callbacks, /* per-connection callbacks */
+			 0,                  /* flags                    */
+			 &conn );            /* returned connection ptr  */
+
+  (*ctxp)->conn = conn;
+
+  if ( err != SASL_OK ) {
+    lua_pushstring(l, "sasl_client_new failed");
+    lua_error(l);
+    return 0;
+  }
+
+  /* Return 1 item on the stack (a userdata pointer to our state struct).
+   * It was already pushed on the stack by new_context(). */
+
+  return 1; /* return # of arguments returned on stack */
+}
+
+/* (err, data, mech) = cyrussasl.client_start(conn, mechlist)
+ *
+ * Arguments:
+ *   conn: the return result from a previous call to client_new
+ *   mechlist: 
+ *
+ * Return values:
+ *   err: the (integer) SASL error code reflecting the state of the attempt 
+ *        (e.g. SASL_OK, SASL_CONTINUE, SASL_BADMECH, ...)
+ *   mech: the mechanism to use during this attempt (e.g. "PLAIN" or "GSSAPI")
+ *   data: data that the server wants to send to the client in order 
+ *         to continue the authN attempt. Returned as a Lua string object.
+ */
+
+static int cyrussasl_sasl_client_start(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  int err;
+  struct _sasl_ctx *ctx = NULL;
+  const char *mechlist = NULL;
+  const char *mechout = NULL;
+  const char *data = NULL;
+  size_t len;
+  unsigned outlen;
+
+  if (numargs != 2) {
+    lua_pushstring(l, 
+		   "usage: "
+		   "(err, data, mech) = cyrussasl.client_start(conn, mechlist)");
+    lua_error(l);
+    return 0;
+  }
+
+  /* Pull arguments off of the stack... */
+
+  ctx = get_context(l, 1);
+  /* Allow the mechlist to be NULL. */
+  if ( lua_type(l, 2) == LUA_TNIL ) {
+    mechlist = NULL;
+  } else {
+    mechlist = tolstring(l, 2, &len);
+  }
+
+  err = sasl_client_start( ctx->conn, /* saved sasl connection              */
+			   mechlist,  /* mech, which the client chose       */
+			   NULL,      /* prompt_need                        */
+			   &data,     /* data return                        */
+			   &outlen,   /* data length return                 */
+			   &mechout   /* chosen mechanism return            */
+			   );
+
+  /* Form the reply and push onto the stack */
+  lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
+  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  lua_pushstring(l, mechout);       /* chosen mech                    */
+  return 3;                         /* returning 3 items on Lua stack */
+}
+
+/* (err, data) = cyrussasl.client_step(conn, data)
+ *
+ * Arguments:
+ *   conn: the return result from a previous call to client_new
+ *   data: any data that the client might have sent from the previous step.
+ *         Note that data may still be an empty string or nil. (Like the 
+ *         argument of the same name to server_start.)
+ *
+ * Return values:
+ *   err: the (integer) SASL error code reflecting the state of the attempt 
+ *        (e.g. SASL_OK, SASL_CONTINUE, SASL_BADMECH, ...)
+ *   data: data that the server wants to send to the client in order 
+ *         to continue the authN attempt. Returned as a Lua string object.
+ */
+static int cyrussasl_sasl_client_step(lua_State *l)
+{
+  int numargs = lua_gettop(l);
+  int err;
+  struct _sasl_ctx *ctx = NULL;
+  const char *data = NULL;
+  size_t len;
+  unsigned outlen;
+
+  if (numargs != 2) {
+    lua_pushstring(l, 
+		   "usage: (err, data) = cyrussasl.client_step(conn, data)");
+    lua_error(l);
+    return 0;
+  }
+
+  ctx = get_context(l, 1);
+  data = tolstring(l, 2, &len);
+
+  err = sasl_client_step( ctx->conn,
+			  data,
+			  len,
+			  NULL, /* prompt_need */
+			  &data,
+			  &outlen );
+
+  /* Form the reply and push onto the stack */
+  lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
+  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  return 2;                         /* returning 2 items on Lua stack */
+}
+
 /* cyrussasl.setssf(conn, min_ssf, max_ssf)
  *
  * conn: the conn pointer from cyrussasl.server_new().
@@ -976,6 +1181,10 @@ static const struct luaL_Reg methods[] = {
   { "server_new",   cyrussasl_sasl_server_new   },
   { "server_start", cyrussasl_sasl_server_start },
   { "server_step",  cyrussasl_sasl_server_step  },
+  { "client_init",  cyrussasl_sasl_client_init  },
+  { "client_new",   cyrussasl_sasl_client_new   },
+  { "client_start", cyrussasl_sasl_client_start },
+  { "client_step",  cyrussasl_sasl_client_step  },
   { "getprop",      cyrussasl_getprop           },
   { "get_username", cyrussasl_get_username      },
   { "get_authname", cyrussasl_get_authname      },
