@@ -37,9 +37,9 @@ static const char * const level_strings[] = {
 static int log_cb_ref = LUA_REFNIL;
 static int minimum_log_prio = SASL_LOG_NONE;
 
-static int _sasl_log(void *context,
-		     int priority,
-		     const char *message)
+static int _sasl_s_log(void *context,
+		       int priority,
+		       const char *message)
 {
   struct _sasl_ctx *ctxp = context;
 
@@ -69,13 +69,13 @@ static int _sasl_log(void *context,
   return SASL_OK;
 }
 
-static int _sasl_canon_user(sasl_conn_t *conn,
-			    void *context,
-			    const char *user, unsigned ulen,
-			    unsigned flags,
-			    const char *user_realm,
-			    char *out_user, unsigned out_umax,
-			    unsigned *out_ulen)
+static int _sasl_s_canon_user(sasl_conn_t *conn,
+			      void *context,
+			      const char *user, unsigned ulen,
+			      unsigned flags,
+			      const char *user_realm,
+			      char *out_user, unsigned out_umax,
+			      unsigned *out_ulen)
 {
   struct _sasl_ctx *ctxp = context;
 
@@ -198,17 +198,58 @@ static int cyrussasl_sasl_server_init(lua_State *l)
   return 0;
 }
 
-static void _init_callbacks(struct _sasl_ctx *ctx)
+static void _init_server_callbacks(struct _sasl_ctx *ctx)
 {
   ctx->callbacks[0].id      = SASL_CB_LOG;         /* Callback for error msg */
-  ctx->callbacks[0].proc    = &_sasl_log;
+  ctx->callbacks[0].proc    = (void *) &_sasl_s_log;
   ctx->callbacks[0].context = ctx;
   ctx->callbacks[1].id      = SASL_CB_CANON_USER;  /* Callback for username */
-  ctx->callbacks[1].proc    = &_sasl_canon_user;
+  ctx->callbacks[1].proc    = (void *)&_sasl_s_canon_user;
   ctx->callbacks[1].context = ctx;
   ctx->callbacks[2].id      = SASL_CB_LIST_END;    /* Terminator */
   ctx->callbacks[2].proc    = NULL;
   ctx->callbacks[2].context = NULL;
+}
+
+static int _sasl_c_simple(void *context, 
+			  int id,
+			  const char **result,
+			  unsigned *len)
+{
+  struct _sasl_ctx *ctxp = context;
+
+  if (!context || ctxp->magic != CYRUSSASL_MAGIC || !result)
+    return SASL_BADPARAM;
+
+  switch (id) {
+  case SASL_CB_USER:
+    *result = get_context_user(ctxp, len);
+    break;
+  case SASL_CB_AUTHNAME:
+    *result = get_context_authname(ctxp);
+    if (len) {
+      *len = strlen(*result);
+    }
+    break;
+  default:
+    return SASL_BADPARAM;
+  }
+
+  return SASL_OK;
+}
+
+
+static void _init_client_callbacks(struct _sasl_ctx *ctx)
+{
+  ctx->callbacks[0].id      = SASL_CB_USER; 
+  ctx->callbacks[0].proc    = (void *)&_sasl_c_simple;
+  ctx->callbacks[0].context = ctx;
+  ctx->callbacks[0].id      = SASL_CB_AUTHNAME;
+  ctx->callbacks[0].proc    = (void *)&_sasl_c_simple;
+  ctx->callbacks[0].context = ctx;
+  ctx->callbacks[1].id      = SASL_CB_LIST_END;
+  ctx->callbacks[1].proc    = NULL;
+  ctx->callbacks[1].context = NULL;
 }
 
 /* conn = cyrussasl.server_new("serice_name", "host FQDN", "user realm",
@@ -262,7 +303,7 @@ static int cyrussasl_sasl_server_new(lua_State *l)
     return 0;
   }
 
-  _init_callbacks(*ctxp);
+  _init_server_callbacks(*ctxp);
 
   err = sasl_server_new( service_name,       /* service name (passed in) */
 			 fqdn,               /* serverFQDN               */
@@ -343,7 +384,11 @@ static int cyrussasl_sasl_server_start(lua_State *l)
 
   /* Form the reply and push onto the stack */
   lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
-  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  if (data) {
+    lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  } else {
+    lua_pushnil(l);
+  }
   return 2;                         /* returning 2 items on Lua stack */
 }
 
@@ -388,7 +433,11 @@ static int cyrussasl_sasl_server_step(lua_State *l)
 
   /* Form the reply and push onto the stack */
   lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
-  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  if (data) {
+    lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  } else {
+    lua_pushnil(l);
+  }
   return 2;                         /* returning 2 items on Lua stack */
 }
 
@@ -400,7 +449,6 @@ static int cyrussasl_sasl_server_step(lua_State *l)
  */
 static int cyrussasl_sasl_client_init(lua_State *l)
 {
-  const char *appname;
   int numargs = lua_gettop(l);
   int err;
 
@@ -469,7 +517,7 @@ static int cyrussasl_sasl_client_new(lua_State *l)
     return 0;
   }
 
-  _init_callbacks(*ctxp);
+  _init_client_callbacks(*ctxp);
 
   err = sasl_client_new( service_name,       /* service name (passed in) */
 			 fqdn,               /* serverFQDN               */
@@ -546,7 +594,11 @@ static int cyrussasl_sasl_client_start(lua_State *l)
 
   /* Form the reply and push onto the stack */
   lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
-  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  if (data) {
+    lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  } else {
+    lua_pushnil(l);
+  }
   lua_pushstring(l, mechout);       /* chosen mech                    */
   return 3;                         /* returning 3 items on Lua stack */
 }
@@ -593,7 +645,11 @@ static int cyrussasl_sasl_client_step(lua_State *l)
 
   /* Form the reply and push onto the stack */
   lua_pushinteger(l, err);          /* SASL_CONTINUE, SASL_OK, et al  */
-  lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  if (data) {
+    lua_pushlstring(l, data, outlen); /* server's reply to the client   */
+  } else {
+    lua_pushnil(l);
+  }
   return 2;                         /* returning 2 items on Lua stack */
 }
 
@@ -650,7 +706,6 @@ static int cyrussasl_setssf(lua_State *l)
  */
 static int cyrussasl_sasl_setprop(lua_State *l)
 {
-  sasl_security_properties_t secprops;
   int err;
   int proptype;
   const void *proparg;
@@ -667,12 +722,13 @@ static int cyrussasl_sasl_setprop(lua_State *l)
   proptype = tointeger(l, 2);
   proparg  = tolstring(l, 3, NULL);
 
-  memset(&secprops, 0L, sizeof(secprops));
-  secprops.max_ssf = UINT_MAX;
-
   err = sasl_setprop(ctx->conn, proptype, &proparg);
   if ( err != SASL_OK ) {
-    lua_pushstring(l, "sasl_setprop failed");
+    const char *ret = get_context_message(ctx);
+    if (ret)
+      lua_pushstring(l, ret);
+    else
+      lua_pushstring(l, "sasl_setprop failed");
     lua_error(l);
     return 0;
   }
@@ -767,7 +823,11 @@ static int cyrussasl_sasl_decode64(lua_State *l)
     return 0;
   }
 
-  lua_pushlstring(l, outdata, outlen);
+  if (outdata) {
+    lua_pushlstring(l, outdata, outlen);
+  } else {
+    lua_pushnil(l);
+  }
   free(outdata);
   return 1;
 }
@@ -834,7 +894,14 @@ static int cyrussasl_sasl_listmech(lua_State *l)
  *
  * conn: the conn pointer from cyrussasl.server_new().
  * property: a SASL property (e.g. SASL_USERNAME, SASL_SSF)
- * FIXME - finish docs
+ *
+ * This is coded to handle the majority of properties available in 
+ * Cyrus SASL (as of this writing, of course). Since each one is 
+ * individually and explcitly coded, that means that additions to the 
+ * SASL library will require some additions/changes here.
+ *
+ * The type of each return value depends on the specific property 
+ * being queried.
  */
 
 static int cyrussasl_getprop(lua_State *l)
@@ -934,6 +1001,32 @@ static int cyrussasl_get_username(lua_State *l)
   return 1;
 }
 
+/* cyrussasl.set_username(conn, username)
+ *
+ * For client-side connections that require a username, this will 
+ * set it (before calling client_start, presumably).
+ */
+static int cyrussasl_set_username(lua_State *l)
+{
+  struct _sasl_ctx *ctx = NULL;
+  const char *uname = NULL;
+  size_t ulen = 0;
+
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    lua_pushstring(l, "usage: cyrussasl.set_username(conn, username)");
+    lua_error(l);
+    return 0;
+  }
+
+  ctx = get_context(l, 1);
+  uname = tolstring(l, 2, &ulen);
+
+  set_context_user(ctx, uname, ulen);
+
+  return 0;
+}
+
 /* user = cyrussasl.get_authname(conn)
  *
  * conn: the conn pointer from cyrussasl.server_new().
@@ -960,6 +1053,32 @@ static int cyrussasl_get_authname(lua_State *l)
     lua_pushstring(l, "");
 
   return 1;
+}
+
+/* cyrussasl.set_authname(conn, username)
+ *
+ * For client-side connections that require an authname, this will 
+ * set it (before calling client_start, presumably).
+ */
+static int cyrussasl_set_authname(lua_State *l)
+{
+  struct _sasl_ctx *ctx = NULL;
+  const char *uname = NULL;
+  size_t ulen = 0;
+
+  int numargs = lua_gettop(l);
+  if (numargs != 2) {
+    lua_pushstring(l, "usage: cyrussasl.set_authname(conn, authname)");
+    lua_error(l);
+    return 0;
+  }
+
+  ctx = get_context(l, 1);
+  uname = tolstring(l, 2, &ulen);
+
+  set_context_authname(ctx, uname);
+
+  return 0;
 }
 
 /* message = cyrussasl.get_message(conn)
@@ -1091,7 +1210,7 @@ static int cyrussasl_set_log_cb(lua_State *l)
  * conn: the conn pointer from cyrussasl.server_new().
  * msg: the data to encode
  *
- * FIXME finish this doc
+ * It's not clear whether or not this is useful as-is; this is largely untested.
  */
 
 static int cyrussasl_encode(lua_State *l)
@@ -1129,7 +1248,7 @@ static int cyrussasl_encode(lua_State *l)
  * conn: the conn pointer from cyrussasl.server_new().
  * msg: the data to decode
  *
- * FIXME finish this doc
+ * It's not clear whether or not this is useful as-is; this is largely untested.
  */
 
 static int cyrussasl_decode(lua_State *l)
@@ -1187,6 +1306,7 @@ static const struct luaL_Reg methods[] = {
   { "client_step",  cyrussasl_sasl_client_step  },
   { "getprop",      cyrussasl_getprop           },
   { "get_username", cyrussasl_get_username      },
+  { "set_username", cyrussasl_set_username      },
   { "get_authname", cyrussasl_get_authname      },
   { "get_message",  cyrussasl_get_message       },
   { "set_canon_cb", cyrussasl_set_canon_cb      },
