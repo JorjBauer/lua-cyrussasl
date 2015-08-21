@@ -1226,8 +1226,12 @@ int luaopen_cyrussasl(lua_State *L)
   /* Create metatable, which is used to tie C data structures to our garbage 
    * collection function. */
   luaL_newmetatable(L, MODULENAME);
+#if LUA_VERSION_NUM == 501
+  luaL_openlib(L, 0, meta, 0);
+#else
   lua_newtable(L);
   luaL_setfuncs(L, meta, 0);
+#endif
   lua_pushliteral(L, "__index");
   lua_pushvalue(L, -3);               /* dup methods table*/
   lua_rawset(L, -3);                  /* metatable.__index = methods */
@@ -1238,8 +1242,14 @@ int luaopen_cyrussasl(lua_State *L)
   lua_pop(L, 1);                      /* drop metatable */
 
   /* Construct a new namespace table for Luaand return it. */
+#if LUA_VERSION_NUM == 501
+  /* Lua 5.1: pollute the root namespace */
+  luaL_openlib(L, MODULENAME, methods, 0);
+#else
+  /* Lua 5.2 and above: be a nice namespace citizen */
   lua_newtable(L);
   luaL_setfuncs(L, methods, 0);
+#endif
 
   /* Inject all of the SASL constants in to the table */
   while (p->name) {
