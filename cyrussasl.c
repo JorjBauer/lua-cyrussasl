@@ -1203,6 +1203,8 @@ struct _saslconst {
 };
 
 static const struct _saslconst constants[] = {
+
+  /* Properties */
   { "SASL_USERNAME",     SASL_USERNAME     },
   { "SASL_SSF",          SASL_SSF          },
   { "SASL_MAXOUTBUF",    SASL_MAXOUTBUF    },
@@ -1215,6 +1217,11 @@ static const struct _saslconst constants[] = {
   { "SASL_AUTHSOURCE",   SASL_AUTHSOURCE   },
   { "SASL_MECHNAME" ,    SASL_MECHNAME     },
   { "SASL_PLUGERR",      SASL_PLUGERR      },
+
+  /* Return Codes */
+  { "SASL_OK",           SASL_OK           },
+  { "SASL_CONTINUE",     SASL_CONTINUE     },
+
   { NULL,                0                 }
 };
 
